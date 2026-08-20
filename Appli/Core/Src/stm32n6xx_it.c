@@ -25,6 +25,7 @@
 
 #include "dma2d.h"
 #include "ll_aton.h"          /* ← 新增 */
+#include "usart.h"
 #include <stdio.h>
 extern void ai_fault_recover(void);   /* ← 新增：在 ai_task.c 里，NPU 总线错误软恢复 */
 /* USER CODE END Includes */
@@ -90,6 +91,7 @@ void NMI_Handler(void)
 void HardFault_Handler(void)
 {
   /* USER CODE BEGIN HardFault_IRQn 0 */
+  g_boot_marker = 0xF1;
   printf("[FAULT] HardFault\r\n");
   ai_fault_recover();   /* ← 新增(HardFault)：有保护则跳回 ai_task，否则继续 while(1) */
   /* USER CODE END HardFault_IRQn 0 */
@@ -106,6 +108,7 @@ void HardFault_Handler(void)
 void MemManage_Handler(void)
 {
   /* USER CODE BEGIN MemoryManagement_IRQn 0 */
+  g_boot_marker = 0xF3;
   ai_fault_recover();   /* ← 新增(MemManage)：有保护则跳回 ai_task，否则继续 while(1) */
   /* USER CODE END MemoryManagement_IRQn 0 */
   while (1)
@@ -121,6 +124,7 @@ void MemManage_Handler(void)
 void BusFault_Handler(void)
 {
   /* USER CODE BEGIN BusFault_IRQn 0 */
+  g_boot_marker = 0xF2;
   printf("[FAULT] BusFault\r\n");
   ai_fault_recover();   /* ← 新增(BusFault)：有保护则跳回 ai_task，否则继续 while(1) */
   /* USER CODE END BusFault_IRQn 0 */
@@ -137,6 +141,7 @@ void BusFault_Handler(void)
 void UsageFault_Handler(void)
 {
   /* USER CODE BEGIN UsageFault_IRQn 0 */
+  g_boot_marker = 0xF5;
   ai_fault_recover();   /* ← 新增(UsageFault)：有保护则跳回 ai_task，否则继续 while(1) */
   /* USER CODE END UsageFault_IRQn 0 */
   while (1)
@@ -152,6 +157,7 @@ void UsageFault_Handler(void)
 void SecureFault_Handler(void)
 {
   /* USER CODE BEGIN SecureFault_IRQn 0 */
+  g_boot_marker = 0xF4;
   printf("[FAULT] SecureFault\r\n");
   ai_fault_recover();   /* ← 新增(SecureFault)：有保护则跳回 ai_task，否则继续 while(1) */
   /* USER CODE END SecureFault_IRQn 0 */

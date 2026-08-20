@@ -28,9 +28,13 @@ extern "C" {
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 
-extern UART_HandleTypeDef huart3;
+extern UART_HandleTypeDef huart1;
 
-void MX_USART3_UART_Init(void);
+void MX_USART1_UART_Init(void);
+
+/* 引导阶段标记：每个埋点写一次，CubeProgrammer 读此变量地址即可定位卡死位置 */
+extern volatile uint32_t g_boot_marker;
+#define LOG_MARK(code, ...) do { g_boot_marker = (uint32_t)(code); printf(__VA_ARGS__); } while (0)
 
 /* USER CODE BEGIN Prototypes */
 void print_info_warning(const char *format, ...);

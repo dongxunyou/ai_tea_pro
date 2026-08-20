@@ -68,6 +68,8 @@ extern XSPI_HandleTypeDef hxspi1;
 
 SRAM_HandleTypeDef hsram1;   /* FMC SRAM 句柄：8080 屏（MD0700） */
 
+volatile uint32_t g_boot_marker = 0;   /* 引导阶段标记（见 usart.h LOG_MARK），调试器读它定位卡死点 */
+
 #ifdef DEBUG
 static HyperRAM_ObjectTypeDef HyperRAMObject = {0};
 #endif
@@ -156,10 +158,17 @@ void MPU_Config(void)
   */
 int main(void)
 {
-  MX_USART3_UART_Init();  /* 诊断：串口最优先就绪（不依赖 MPU/HAL 时基） */
-  printf("[B0] boot\r\n");
+  /* ★ 最优先：RIF 授权（NS 侧访问外设的前提，必须在任何外设初始化之前） */
+  __HAL_RCC_RIFSC_CLK_ENABLE();
+  HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_USART1,
+                                        RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);  /* 调试串口 */
+  HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_FMC,
+                                        RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);  /* 8080 屏 */
+
+  MX_USART1_UART_Init();  /* 诊断：串口最优先就绪（板载 USB_UART 口，不依赖 MPU/HAL 时基） */
+  LOG_MARK(0xB0, "[B0] boot\r\n");
   MPU_Config();  /* 必须在 Cache 初始化之前 */
-  printf("[B1] mpu ok\r\n");
+  LOG_MARK(0xB1, "[B1] mpu ok\r\n");
   /* USER CODE BEGIN 1 */
 //  MPU_Config();
   /* USER CODE END 1 */
@@ -171,12 +180,12 @@ int main(void)
 
   /* Enable D-Cache---------------------------------------------------------*/
   SCB_EnableDCache();
-  printf("[B2] cache ok\r\n");
+  LOG_MARK(0xB2, "[B2] cache ok\r\n");
 
   SystemCoreClockUpdate();
   /* MCU Configuration--------------------------------------------------------*/
   HAL_Init();
-  printf("[B3] hal ok\r\n");
+  LOG_MARK(0xB3, "[B3] hal ok\r\n");
 
   /* USER CODE BEGIN Init */
   
@@ -225,18 +234,19 @@ int main(void)
         Error_Handler();
     }
     printf("[B4] tick ok\r\n");
+    g_boot_marker = 0xB4;
 
   MX_GPIO_Init();
   MX_DMA2D_Init();
-  printf("[B5] gpio/dma2d ok\r\n");
+  LOG_MARK(0xB5, "[B5] gpio/dma2d ok\r\n");
 
   MX_DCMIPP_Init();
-  printf("[B6] dcmipp ok\r\n");
-  printf("[B7] fmc init...\r\n");
+  LOG_MARK(0xB6, "[B6] dcmipp ok\r\n");
+  LOG_MARK(0xB7, "[B7] fmc init...\r\n");
   MX_FMC_Init();          /* 8080 屏（MD0700）FMC 接口 */
-  printf("[B8] fmc ok\r\n");
+  LOG_MARK(0xB8, "[B8] fmc ok\r\n");
   MX_RAMCFG_Init();
-  printf("[B9] ramcfg ok\r\n");
+  LOG_MARK(0xB9, "[B9] ramcfg ok\r\n");
  
   
   //MX_XSPI2_Init();
@@ -254,7 +264,7 @@ int main(void)
   print_info_debug("[CHK] main: RIMC master API is EMPTY (macro missing!)");
 #endif
   SystemIsolation_Config();
-  printf("[B10] rif ok\r\n");
+  LOG_MARK(0xB10, "[B10] rif ok\r\n");
   /* USER CODE BEGIN 2 */
 
   // ! ------------------------------------------------
@@ -274,7 +284,7 @@ print_info_debug("初始化完成");
   osKernelInitialize();
   /* Call init function for freertos objects (in app_freertos.c) */
   MX_FREERTOS_Init();
-  printf("[B11] rtos objects ok, kernel start\r\n");
+  LOG_MARK(0xB11, "[B11] rtos objects ok, kernel start\r\n");
 
   /* Start scheduler */
   osKernelStart();
@@ -412,9 +422,7 @@ HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_DCMIPP,
    /* ★ 新增:给 NPU 放行(否则 RuntimeInit 碰 NPU 被 RIF 拦,总线错误冻死) */
   HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_NPU,
                                         RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
-   /* ★ 新增:给 FMC 放行(8080屏 MD0700；NS 侧访问 FMC 寄存器必须授权，否则 HAL_SRAM_Init 即死) */
-  HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_FMC,
-                                        RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
+   /* 注：FMC/USART1 的 RIF 授权已上移到 main() 最开头（必须在对应外设初始化之前） */
   /* ★ 彩蛋 SAI1: 不要配 SEC！实测配 SEC|PRIV 后 NS 侧 RCC 时钟使能/寄存器访问被 RIF 拦
    *    (诊断: CR1 读回=0, DMA 等 FIFO 超时 t=3)。SAI1 保持默认非安全属性即可被 NS 使用。
    *    引脚 SEC 配置(PB0/PB2/PC2/PE2)仍保留——那是 NS 使用 GPIO 的必要前提。 */
@@ -651,6 +659,7 @@ void Error_Handler(void)
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
   printf("[FATAL] Error_Handler!\r\n");
+  g_boot_marker = 0xEE;
   __disable_irq();
   while (1) {
   }
