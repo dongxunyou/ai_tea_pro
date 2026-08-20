@@ -156,7 +156,10 @@ void MPU_Config(void)
   */
 int main(void)
 {
-MPU_Config();  /* 必须在 Cache 初始化之前 */
+  MX_USART3_UART_Init();  /* 诊断：串口最优先就绪（不依赖 MPU/HAL 时基） */
+  printf("[B0] boot\r\n");
+  MPU_Config();  /* 必须在 Cache 初始化之前 */
+  printf("[B1] mpu ok\r\n");
   /* USER CODE BEGIN 1 */
 //  MPU_Config();
   /* USER CODE END 1 */
@@ -168,10 +171,12 @@ MPU_Config();  /* 必须在 Cache 初始化之前 */
 
   /* Enable D-Cache---------------------------------------------------------*/
   SCB_EnableDCache();
+  printf("[B2] cache ok\r\n");
 
   SystemCoreClockUpdate();
   /* MCU Configuration--------------------------------------------------------*/
   HAL_Init();
+  printf("[B3] hal ok\r\n");
 
   /* USER CODE BEGIN Init */
   
@@ -219,16 +224,19 @@ MPU_Config();  /* 必须在 Cache 初始化之前 */
     {
         Error_Handler();
     }
+    printf("[B4] tick ok\r\n");
 
   MX_GPIO_Init();
   MX_DMA2D_Init();
+  printf("[B5] gpio/dma2d ok\r\n");
 
   MX_DCMIPP_Init();
-  MX_USART3_UART_Init();  /* 调试日志口 PE1_TX 115200 —— 提到最前，后续外设挂死也能看到日志 */
-  printf("[BOOT] USART3 log ready, FMC init...\r\n");
+  printf("[B6] dcmipp ok\r\n");
+  printf("[B7] fmc init...\r\n");
   MX_FMC_Init();          /* 8080 屏（MD0700）FMC 接口 */
-  printf("[BOOT] FMC init ok\r\n");
+  printf("[B8] fmc ok\r\n");
   MX_RAMCFG_Init();
+  printf("[B9] ramcfg ok\r\n");
  
   
   //MX_XSPI2_Init();
@@ -246,11 +254,12 @@ MPU_Config();  /* 必须在 Cache 初始化之前 */
   print_info_debug("[CHK] main: RIMC master API is EMPTY (macro missing!)");
 #endif
   SystemIsolation_Config();
+  printf("[B10] rif ok\r\n");
   /* USER CODE BEGIN 2 */
 
   // ! ------------------------------------------------
-  
-  
+
+
 
 print_info_debug("初始化完成");
 
@@ -265,6 +274,7 @@ print_info_debug("初始化完成");
   osKernelInitialize();
   /* Call init function for freertos objects (in app_freertos.c) */
   MX_FREERTOS_Init();
+  printf("[B11] rtos objects ok, kernel start\r\n");
 
   /* Start scheduler */
   osKernelStart();
@@ -640,6 +650,7 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
+  printf("[FATAL] Error_Handler!\r\n");
   __disable_irq();
   while (1) {
   }

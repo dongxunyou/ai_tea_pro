@@ -25,6 +25,7 @@
 
 #include "dma2d.h"
 #include "ll_aton.h"          /* ← 新增 */
+#include <stdio.h>
 extern void ai_fault_recover(void);   /* ← 新增：在 ai_task.c 里，NPU 总线错误软恢复 */
 /* USER CODE END Includes */
 
@@ -89,6 +90,7 @@ void NMI_Handler(void)
 void HardFault_Handler(void)
 {
   /* USER CODE BEGIN HardFault_IRQn 0 */
+  printf("[FAULT] HardFault\r\n");
   ai_fault_recover();   /* ← 新增(HardFault)：有保护则跳回 ai_task，否则继续 while(1) */
   /* USER CODE END HardFault_IRQn 0 */
   while (1)
@@ -119,6 +121,7 @@ void MemManage_Handler(void)
 void BusFault_Handler(void)
 {
   /* USER CODE BEGIN BusFault_IRQn 0 */
+  printf("[FAULT] BusFault\r\n");
   ai_fault_recover();   /* ← 新增(BusFault)：有保护则跳回 ai_task，否则继续 while(1) */
   /* USER CODE END BusFault_IRQn 0 */
   while (1)
@@ -149,6 +152,7 @@ void UsageFault_Handler(void)
 void SecureFault_Handler(void)
 {
   /* USER CODE BEGIN SecureFault_IRQn 0 */
+  printf("[FAULT] SecureFault\r\n");
   ai_fault_recover();   /* ← 新增(SecureFault)：有保护则跳回 ai_task，否则继续 while(1) */
   /* USER CODE END SecureFault_IRQn 0 */
   while (1)

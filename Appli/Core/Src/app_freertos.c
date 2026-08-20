@@ -90,14 +90,17 @@ static void lvgl_log_cb(lv_log_level_t level, const char *buf) {
 void lvgl_main(void *argument) {
   (void)argument;
   osDelay(100);
+  printf("[T1] lvgl task run\r\n");
 
   lcd_init();   /* 8080 屏（MD0700）初始化：FMC 读 ID 自识别 + 点亮背光 */
   lcd_display_dir(1);   /* 横屏 800x480（lcd_init 默认竖屏 480x800） */
-  printf("[LCD] id = 0x%04X, %ux%u\r\n", lcddev.id, lcddev.width, lcddev.height);
+  printf("[T2] lcd id = 0x%04X, %ux%u\r\n", lcddev.id, lcddev.width, lcddev.height);
   lv_init();
   lv_log_register_print_cb(lvgl_log_cb);
   lv_port_disp_init();
+  printf("[T3] disp ok\r\n");
   lv_port_indev_init();
+  printf("[T4] indev ok\r\n");
   lv_tick_set_cb((lv_tick_get_cb_t)osKernelGetTickCount);
 
   {
@@ -120,9 +123,11 @@ void lvgl_main(void *argument) {
       ov5640_dcmipp_init();
       ov5640_dcmipp_start();
     }
+    printf("[T5] cam ok = %d\r\n", (int)g_ov5640_ok);
   }
 
   lv_ai_gui_init();  /* AI 识别界面（摄像头画面 + 检测框 + 识别按钮） */
+  printf("[T6] gui ok\r\n");
 
   Subtitle_Init();  /* 创建底部字幕 label，默认隐藏/空 */
 
