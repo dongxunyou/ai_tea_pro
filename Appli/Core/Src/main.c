@@ -32,7 +32,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
-#include "rgblcd.h"
+#include "lcd.h"
 #include <stdint.h>
 #include <stdio.h>
 #ifdef DEBUG
@@ -66,6 +66,8 @@ extern LTDC_HandleTypeDef hltdc;
 
 extern XSPI_HandleTypeDef hxspi1;
 
+SRAM_HandleTypeDef hsram1;   /* FMC SRAM 句柄：8080 屏（MD0700） */
+
 #ifdef DEBUG
 static HyperRAM_ObjectTypeDef HyperRAMObject = {0};
 #endif
@@ -74,8 +76,7 @@ static HyperRAM_ObjectTypeDef HyperRAMObject = {0};
 /* Private function prototypes -----------------------------------------------*/
 void MX_FREERTOS_Init(void);
 static void SystemIsolation_Config(void);
-/* USER CODE BEGIN PFP */
-
+static void MX_FMC_Init(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -222,8 +223,9 @@ MPU_Config();  /* 必须在 Cache 初始化之前 */
   MX_GPIO_Init();
   MX_DMA2D_Init();
 
-  MX_LTDC_Init();
   MX_DCMIPP_Init();
+  MX_FMC_Init();          /* 8080 屏（MD0700）FMC 接口 */
+  MX_USART3_UART_Init();  /* 调试日志口 PE1_TX 115200 */
   MX_RAMCFG_Init();
  
   
@@ -291,6 +293,55 @@ void PeriphCommonClock_Config(void)
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
   {
     Error_Handler();
+  }
+}
+
+/**
+  * @brief FMC Initialization Function（8080 屏 MD0700，NE1 + A13=RS，16bit）
+  *        移植自正点原子 14_TFTLCD 例程
+  */
+static void MX_FMC_Init(void)
+{
+  FMC_NORSRAM_TimingTypeDef Timing = {0};
+  FMC_NORSRAM_TimingTypeDef ExtTiming = {0};
+
+  hsram1.Instance = FMC_NORSRAM_DEVICE;
+  hsram1.Extended = FMC_NORSRAM_EXTENDED_DEVICE;
+  /* hsram1.Init */
+  hsram1.Init.NSBank = FMC_NORSRAM_BANK1;
+  hsram1.Init.DataAddressMux = FMC_DATA_ADDRESS_MUX_DISABLE;
+  hsram1.Init.MemoryType = FMC_MEMORY_TYPE_SRAM;
+  hsram1.Init.MemoryDataWidth = FMC_NORSRAM_MEM_BUS_WIDTH_16;
+  hsram1.Init.BurstAccessMode = FMC_BURST_ACCESS_MODE_DISABLE;
+  hsram1.Init.WaitSignalPolarity = FMC_WAIT_SIGNAL_POLARITY_LOW;
+  hsram1.Init.WaitSignalActive = FMC_WAIT_TIMING_BEFORE_WS;
+  hsram1.Init.WriteOperation = FMC_WRITE_OPERATION_ENABLE;
+  hsram1.Init.WaitSignal = FMC_WAIT_SIGNAL_DISABLE;
+  hsram1.Init.ExtendedMode = FMC_EXTENDED_MODE_ENABLE;
+  hsram1.Init.AsynchronousWait = FMC_ASYNCHRONOUS_WAIT_DISABLE;
+  hsram1.Init.WriteBurst = FMC_WRITE_BURST_DISABLE;
+  hsram1.Init.ContinuousClock = FMC_CONTINUOUS_CLOCK_SYNC_ONLY;
+  hsram1.Init.PageSize = FMC_PAGE_SIZE_NONE;
+  /* Timing */
+  Timing.AddressSetupTime = 15;
+  Timing.AddressHoldTime = 15;
+  Timing.DataSetupTime = 107;
+  Timing.BusTurnAroundDuration = 15;
+  Timing.CLKDivision = 16;
+  Timing.DataLatency = 17;
+  Timing.AccessMode = FMC_ACCESS_MODE_A;
+  /* ExtTiming */
+  ExtTiming.AddressSetupTime = 15;
+  ExtTiming.AddressHoldTime = 15;
+  ExtTiming.DataSetupTime = 20;
+  ExtTiming.BusTurnAroundDuration = 15;
+  ExtTiming.CLKDivision = 16;
+  ExtTiming.DataLatency = 17;
+  ExtTiming.AccessMode = FMC_ACCESS_MODE_A;
+
+  if (HAL_SRAM_Init(&hsram1, &Timing, &ExtTiming) != HAL_OK)
+  {
+    Error_Handler( );
   }
 }
 
@@ -432,6 +483,18 @@ HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_DCMIPP,
   HAL_GPIO_ConfigPinAttributes(GPIOP,GPIO_PIN_6,GPIO_PIN_SEC|GPIO_PIN_NPRIV);
   HAL_GPIO_ConfigPinAttributes(GPIOP,GPIO_PIN_7,GPIO_PIN_SEC|GPIO_PIN_NPRIV);
   HAL_GPIO_ConfigPinAttributes(GPIOQ,GPIO_PIN_2,GPIO_PIN_SEC|GPIO_PIN_NPRIV);
+
+/* ===== 8080 屏 FMC 引脚补充（MD0700：PA4=RS, PA12=D0, PA15=D15, PB4=D13, PB5=D12, PB6=D14）=====
+ * 其余 FMC 引脚（PA0~3/5/8~11、PB7~12、PF8、PG9/13）已在上方列表配置过 */
+  HAL_GPIO_ConfigPinAttributes(GPIOA, GPIO_PIN_4,  GPIO_PIN_SEC|GPIO_PIN_NPRIV);
+  HAL_GPIO_ConfigPinAttributes(GPIOA, GPIO_PIN_12, GPIO_PIN_SEC|GPIO_PIN_NPRIV);
+  HAL_GPIO_ConfigPinAttributes(GPIOA, GPIO_PIN_15, GPIO_PIN_SEC|GPIO_PIN_NPRIV);
+  HAL_GPIO_ConfigPinAttributes(GPIOB, GPIO_PIN_4,  GPIO_PIN_SEC|GPIO_PIN_NPRIV);
+  HAL_GPIO_ConfigPinAttributes(GPIOB, GPIO_PIN_5,  GPIO_PIN_SEC|GPIO_PIN_NPRIV);
+  HAL_GPIO_ConfigPinAttributes(GPIOB, GPIO_PIN_6,  GPIO_PIN_SEC|GPIO_PIN_NPRIV);
+/* 触摸 GT911 复位/中断（MD0700：PD10=RST, PB3=INT） */
+  HAL_GPIO_ConfigPinAttributes(GPIOD, GPIO_PIN_10, GPIO_PIN_SEC|GPIO_PIN_NPRIV);
+  HAL_GPIO_ConfigPinAttributes(GPIOB, GPIO_PIN_3,  GPIO_PIN_SEC|GPIO_PIN_NPRIV);
 
 /* USER CODE BEGIN RIF_Init 1 */
 

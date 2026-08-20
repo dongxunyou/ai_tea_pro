@@ -229,31 +229,6 @@ void TIM16_IRQHandler(void)
 //   /* USER CODE END DMA2D_IRQn 1 */
 // }
 /* USER CODE END 1 */
-/**
-  * @brief This function handles LTDC up-layer global interrupt.
-  */
-void LTDC_UP_IRQHandler(void)
-{
-  /* USER CODE BEGIN LTDC_UP_IRQn 0 */
-
-  /* USER CODE END LTDC_UP_IRQn 0 */
-  
-  /* 调用 rgblcd.c 中的中断处理逻辑 */
-  extern void LTDC_UP_IRQHandler_Impl(void);
-  LTDC_UP_IRQHandler_Impl();//<<----------在这打断点，压根就没触发过
-  
-  /* USER CODE BEGIN LTDC_UP_IRQn 1 */
-
-  /* USER CODE END LTDC_UP_IRQn 1 */
-}
-/**
- * @brief LTDC LO-layer global interrupt（layer 0/1 走这里）
- */
-void LTDC_LO_IRQHandler(void)
-{
-    extern void LTDC_LO_IRQHandler_Impl(void);
-    LTDC_LO_IRQHandler_Impl();
-}
 // #include "lvgl.h"
 // #include "src/draw/sw/lv_draw_sw.h"   /* 看你的 LVGL 9.x 头文件位置 */
 // /* 或者直接声明：*/

@@ -42,10 +42,13 @@ set(CMAKE_CXX_COMPILER_FORCED "true")
 # Enable CMake support for ASM and C languages
 enable_language(C ASM)
 
-# ===== User：递归扫描.c，递归收集头文件目录（音乐播放器彩蛋新增文件会自动纳入）=====
+# ===== User：递归扫描.c，递归收集头文件目录 =====
 file(GLOB_RECURSE USER_DRIVER_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/User/*.c"
 )
+# 排除 lcd_ex.c —— 它是被 lcd.c #include 的"寄存器初始化代码片段"，
+# 不是独立编译单元，直接编译会导致符号重复定义
+list(FILTER USER_DRIVER_SOURCES EXCLUDE REGEX "lcd_ex\\.c$")
 file(GLOB_RECURSE USER_DRIVER_HEADERS
     "${CMAKE_CURRENT_SOURCE_DIR}/User/*.h"
 )
@@ -161,3 +164,9 @@ list(REMOVE_ITEM CMAKE_C_IMPLICIT_LINK_LIBRARIES ob)
 if((CMAKE_C_STANDARD EQUAL 90) OR (CMAKE_C_STANDARD EQUAL 99))
     message(ERROR "Generated code requires C11 or higher")
 endif()
+
+# ── HAL SRAM/FMC 模块（手工添加，不经 CubeMX：8080 屏 MD0700 用）──
+target_sources(${CMAKE_PROJECT_NAME} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_sram.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_ll_fmc.c
+)

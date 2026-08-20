@@ -28,6 +28,10 @@ extern "C" {
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 
+extern UART_HandleTypeDef huart3;
+
+void MX_USART3_UART_Init(void);
+
 /* USER CODE BEGIN Prototypes */
 void print_info_warning(const char *format, ...);
 void print_info_err(const char *format, ...);

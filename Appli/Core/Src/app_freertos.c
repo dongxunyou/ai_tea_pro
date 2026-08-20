@@ -27,14 +27,15 @@
 #include "bus_lock.h"
 #include "cmsis_os2.h"
 #include "gui.h"
+#include "lcd.h"
 #include "lv_port_disp.h"
 #include "lv_port_indev.h"
 #include "lvgl.h"
 #include "ov5640.h"
-#include "rgblcd.h"
 #include "subtitle.h"
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 
 /* ── 任务句柄 & 属性 ── */
 osThreadId_t defaultTaskHandle;
@@ -90,7 +91,8 @@ void lvgl_main(void *argument) {
   (void)argument;
   osDelay(100);
 
-  rgblcd_init();
+  lcd_init();   /* 8080 屏（MD0700）初始化：FMC 读 ID 自识别 + 点亮背光 */
+  printf("[LCD] id = 0x%04X, %ux%u\r\n", lcddev.id, lcddev.width, lcddev.height);
   lv_init();
   lv_log_register_print_cb(lvgl_log_cb);
   lv_port_disp_init();
