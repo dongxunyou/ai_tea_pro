@@ -1,0 +1,43 @@
+CompileFlags:
+  Add:
+  - -ferror-limit=0
+  - -Wno-implicit-int
+  CompilationDatabase: Appli/build
+Diagnostics:
+  Suppress:
+  - unused-includes
+  - unknown_typename
+  - unknown_typename_suggest
+  - typename_requires_specqual
+If:
+  PathMatch: Appli/build/compile_commands.json/.*
+
+---
+
+CompileFlags:
+  Add:
+  - -ferror-limit=0
+  - -Wno-implicit-int
+  CompilationDatabase: Appli/build
+Diagnostics:
+  Suppress:
+  - unused-includes
+  - unknown_typename
+  - unknown_typename_suggest
+  - typename_requires_specqual
+If:
+  PathMatch: Appli/build/compile_commands.json/.*
+
+---
+
+CompileFlags:
+  CompilationDatabase: Appli/build
+If:
+  PathMatch: Appli/.*
+
+---
+
+CompileFlags:
+  CompilationDatabase: ExtMemLoader/build
+If:
+  PathMatch: ExtMemLoader/.*

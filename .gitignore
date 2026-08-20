@@ -1,0 +1,17 @@
+# 构建输出
+build
+CMakeFiles
+CMakeCache.txt
+cmake_install.cmake
+.mxproject
+mx.scratch
+!.settings
+
+# IDE
+.vs/
+
+# 杂项
+*.bak*
+dist/
+__pycache__/
+tools/*.zip
