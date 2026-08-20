@@ -224,8 +224,10 @@ MPU_Config();  /* 必须在 Cache 初始化之前 */
   MX_DMA2D_Init();
 
   MX_DCMIPP_Init();
+  MX_USART3_UART_Init();  /* 调试日志口 PE1_TX 115200 —— 提到最前，后续外设挂死也能看到日志 */
+  printf("[BOOT] USART3 log ready, FMC init...\r\n");
   MX_FMC_Init();          /* 8080 屏（MD0700）FMC 接口 */
-  MX_USART3_UART_Init();  /* 调试日志口 PE1_TX 115200 */
+  printf("[BOOT] FMC init ok\r\n");
   MX_RAMCFG_Init();
  
   
@@ -399,6 +401,9 @@ HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_DCMIPP,
 
    /* ★ 新增:给 NPU 放行(否则 RuntimeInit 碰 NPU 被 RIF 拦,总线错误冻死) */
   HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_NPU,
+                                        RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
+   /* ★ 新增:给 FMC 放行(8080屏 MD0700；NS 侧访问 FMC 寄存器必须授权，否则 HAL_SRAM_Init 即死) */
+  HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_FMC,
                                         RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
   /* ★ 彩蛋 SAI1: 不要配 SEC！实测配 SEC|PRIV 后 NS 侧 RCC 时钟使能/寄存器访问被 RIF 拦
    *    (诊断: CR1 读回=0, DMA 等 FIFO 超时 t=3)。SAI1 保持默认非安全属性即可被 NS 使用。

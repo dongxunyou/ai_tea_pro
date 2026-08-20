@@ -92,6 +92,7 @@ void lvgl_main(void *argument) {
   osDelay(100);
 
   lcd_init();   /* 8080 屏（MD0700）初始化：FMC 读 ID 自识别 + 点亮背光 */
+  lcd_display_dir(1);   /* 横屏 800x480（lcd_init 默认竖屏 480x800） */
   printf("[LCD] id = 0x%04X, %ux%u\r\n", lcddev.id, lcddev.width, lcddev.height);
   lv_init();
   lv_log_register_print_cb(lvgl_log_cb);
