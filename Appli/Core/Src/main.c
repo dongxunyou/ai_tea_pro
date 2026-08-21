@@ -180,7 +180,6 @@ int main(void)
     HAL_GPIO_Init(GPIOG, &led_init);   /* LED0 */
     HAL_GPIO_Init(GPIOE, &led_init);   /* LED1（defaultTask 心跳用） */
     HAL_GPIO_WritePin(GPIOG, GPIO_PIN_10, GPIO_PIN_SET);
-    HAL_Delay(1);
     HAL_GPIO_TogglePin(GPIOG, GPIO_PIN_10);   /* LED0 状态翻转=到达 main 证据 */
   }
 
