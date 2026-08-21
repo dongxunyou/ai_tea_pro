@@ -158,6 +158,29 @@ void MPU_Config(void)
   */
 int main(void)
 {
+  /* ===== 裸诊断闸门（诊断用，正常版删除）：最小生命迹象 =====
+   * 不依赖 RTOS/串口/外设/HAL时基，只翻转 LED0(PG10)+LED1(PE10)。
+   * 上电两颗 LED 同步闪烁 = 骨架(启动/链接/main)OK。 */
+#if 1
+  SCB_EnableICache();
+  SCB_EnableDCache();
+  HAL_Init();
+  __HAL_RCC_GPIOG_CLK_ENABLE();
+  __HAL_RCC_GPIOE_CLK_ENABLE();
+  {
+    GPIO_InitTypeDef g = {0};
+    g.Pin = GPIO_PIN_10; g.Mode = GPIO_MODE_OUTPUT_PP; g.Pull = GPIO_NOPULL; g.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(GPIOG, &g);
+    HAL_GPIO_Init(GPIOE, &g);
+  }
+  while (1) {
+    HAL_GPIO_TogglePin(GPIOG, GPIO_PIN_10);
+    HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_10);
+    for (volatile uint32_t i = 0; i < 1000000; i++) { __NOP(); }
+  }
+#endif
+  /* ===== 裸诊断闸门结束 ===== */
+
   /* ★ 最优先：RIF 授权（NS 侧访问外设的前提，必须在任何外设初始化之前） */
   __HAL_RCC_RIFSC_CLK_ENABLE();
   HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_USART1,
