@@ -75,7 +75,8 @@ void MX_FREERTOS_Init(void) {
 void StartDefaultTask(void *argument) {
   (void)argument;
   for (;;) {
-    osDelay(1000);
+    HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_10);   /* LED1 心跳：闪烁=RTOS 调度正常 */
+    osDelay(200);
   }
 }
 

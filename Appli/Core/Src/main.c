@@ -165,6 +165,25 @@ int main(void)
   HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_FMC,
                                         RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);  /* 8080 屏 */
 
+  /* ★ 生命迹象 LED0(PG10)：引脚 RIF 配置 + GPIO 输出，点亮=到达 main
+   *    （不依赖 RTOS/串口，肉眼可判） */
+  HAL_GPIO_ConfigPinAttributes(GPIOG, GPIO_PIN_10, GPIO_PIN_SEC|GPIO_PIN_NPRIV);
+  HAL_GPIO_ConfigPinAttributes(GPIOE, GPIO_PIN_10, GPIO_PIN_SEC|GPIO_PIN_NPRIV);
+  __HAL_RCC_GPIOG_CLK_ENABLE();
+  __HAL_RCC_GPIOE_CLK_ENABLE();
+  {
+    GPIO_InitTypeDef led_init = {0};
+    led_init.Pin  = GPIO_PIN_10;
+    led_init.Mode = GPIO_MODE_OUTPUT_PP;
+    led_init.Pull = GPIO_NOPULL;
+    led_init.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(GPIOG, &led_init);   /* LED0 */
+    HAL_GPIO_Init(GPIOE, &led_init);   /* LED1（defaultTask 心跳用） */
+    HAL_GPIO_WritePin(GPIOG, GPIO_PIN_10, GPIO_PIN_SET);
+    HAL_Delay(1);
+    HAL_GPIO_TogglePin(GPIOG, GPIO_PIN_10);   /* LED0 状态翻转=到达 main 证据 */
+  }
+
   MX_USART1_UART_Init();  /* 诊断：串口最优先就绪（板载 USB_UART 口，不依赖 MPU/HAL 时基） */
   LOG_MARK(0xB0, "[B0] boot\r\n");
   MPU_Config();  /* 必须在 Cache 初始化之前 */
