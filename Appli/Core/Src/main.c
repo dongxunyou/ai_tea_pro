@@ -158,13 +158,20 @@ void MPU_Config(void)
   */
 int main(void)
 {
-  /* ===== 裸诊断闸门（诊断用，正常版删除）：最小生命迹象 =====
-   * 不依赖 RTOS/串口/外设/HAL时基，只翻转 LED0(PG10)+LED1(PE10)。
-   * 上电两颗 LED 同步闪烁 = 骨架(启动/链接/main)OK。 */
+  /* ===== 裸诊断闸门 v2（诊断用）：验证 RIF裸操作+USART1+printf+HAL_Delay =====
+   * 上电 LED 慢闪(500ms) + COM6 打印 [ALIVE] 计数 = main 早期代码全 OK */
 #if 1
   SCB_EnableICache();
   SCB_EnableDCache();
   HAL_Init();
+
+  __HAL_RCC_RIFSC_CLK_ENABLE();
+  HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_USART1,
+                                        RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
+  HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_FMC,
+                                        RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);
+  HAL_GPIO_ConfigPinAttributes(GPIOG, GPIO_PIN_10, GPIO_PIN_SEC|GPIO_PIN_NPRIV);
+  HAL_GPIO_ConfigPinAttributes(GPIOE, GPIO_PIN_10, GPIO_PIN_SEC|GPIO_PIN_NPRIV);
   __HAL_RCC_GPIOG_CLK_ENABLE();
   __HAL_RCC_GPIOE_CLK_ENABLE();
   {
@@ -173,10 +180,15 @@ int main(void)
     HAL_GPIO_Init(GPIOG, &g);
     HAL_GPIO_Init(GPIOE, &g);
   }
-  while (1) {
-    HAL_GPIO_TogglePin(GPIOG, GPIO_PIN_10);
-    HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_10);
-    for (volatile uint32_t i = 0; i < 1000000; i++) { __NOP(); }
+  MX_USART1_UART_Init();
+  {
+    uint32_t n = 0;
+    while (1) {
+      HAL_GPIO_TogglePin(GPIOG, GPIO_PIN_10);
+      HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_10);
+      printf("[ALIVE] %lu\r\n", (unsigned long)n++);
+      HAL_Delay(500);
+    }
   }
 #endif
   /* ===== 裸诊断闸门结束 ===== */
