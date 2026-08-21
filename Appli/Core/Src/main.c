@@ -181,44 +181,9 @@ int main(void)
     HAL_GPIO_Init(GPIOE, &g);
   }
   MX_USART1_UART_Init();
-  {
-    uint32_t n = 0;
-    while (1) {
-      HAL_GPIO_TogglePin(GPIOG, GPIO_PIN_10);
-      HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_10);
-      printf("[ALIVE] %lu\r\n", (unsigned long)n++);
-      HAL_Delay(500);
-    }
-  }
 #endif
-  /* ===== 裸诊断闸门结束 ===== */
+  /* ===== 裸诊断闸门结束（v3：流程继续向下，逐步验证外设初始化） ===== */
 
-  /* ★ 最优先：RIF 授权（NS 侧访问外设的前提，必须在任何外设初始化之前） */
-  __HAL_RCC_RIFSC_CLK_ENABLE();
-  HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_USART1,
-                                        RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);  /* 调试串口 */
-  HAL_RIF_RISC_SetSlaveSecureAttributes(RIF_RISC_PERIPH_INDEX_FMC,
-                                        RIF_ATTRIBUTE_SEC | RIF_ATTRIBUTE_PRIV);  /* 8080 屏 */
-
-  /* ★ 生命迹象 LED0(PG10)：引脚 RIF 配置 + GPIO 输出，点亮=到达 main
-   *    （不依赖 RTOS/串口，肉眼可判） */
-  HAL_GPIO_ConfigPinAttributes(GPIOG, GPIO_PIN_10, GPIO_PIN_SEC|GPIO_PIN_NPRIV);
-  HAL_GPIO_ConfigPinAttributes(GPIOE, GPIO_PIN_10, GPIO_PIN_SEC|GPIO_PIN_NPRIV);
-  __HAL_RCC_GPIOG_CLK_ENABLE();
-  __HAL_RCC_GPIOE_CLK_ENABLE();
-  {
-    GPIO_InitTypeDef led_init = {0};
-    led_init.Pin  = GPIO_PIN_10;
-    led_init.Mode = GPIO_MODE_OUTPUT_PP;
-    led_init.Pull = GPIO_NOPULL;
-    led_init.Speed = GPIO_SPEED_FREQ_LOW;
-    HAL_GPIO_Init(GPIOG, &led_init);   /* LED0 */
-    HAL_GPIO_Init(GPIOE, &led_init);   /* LED1（defaultTask 心跳用） */
-    HAL_GPIO_WritePin(GPIOG, GPIO_PIN_10, GPIO_PIN_SET);
-    HAL_GPIO_TogglePin(GPIOG, GPIO_PIN_10);   /* LED0 状态翻转=到达 main 证据 */
-  }
-
-  MX_USART1_UART_Init();  /* 诊断：串口最优先就绪（板载 USB_UART 口，不依赖 MPU/HAL 时基） */
   LOG_MARK(0xB0, "[B0] boot\r\n");
   MPU_Config();  /* 必须在 Cache 初始化之前 */
   LOG_MARK(0xB1, "[B1] mpu ok\r\n");
@@ -337,7 +302,18 @@ print_info_debug("初始化完成");
   osKernelInitialize();
   /* Call init function for freertos objects (in app_freertos.c) */
   MX_FREERTOS_Init();
-  LOG_MARK(0xB11, "[B11] rtos objects ok, kernel start\r\n");
+  LOG_MARK(0xB11, "[B11] rtos objects ok\r\n");
+
+  /* ===== 诊断 v3：暂不进 RTOS，心跳确认全部初始化存活 ===== */
+  {
+    uint32_t n = 0;
+    while (1) {
+      HAL_GPIO_TogglePin(GPIOG, GPIO_PIN_10);
+      HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_10);
+      printf("[INIT-OK] alive %lu\r\n", (unsigned long)n++);
+      HAL_Delay(500);
+    }
+  }
 
   /* Start scheduler */
   osKernelStart();
