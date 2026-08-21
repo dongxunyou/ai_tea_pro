@@ -184,7 +184,7 @@ int main(void)
 #endif
   /* ===== 裸诊断闸门结束（v3：流程继续向下，逐步验证外设初始化） ===== */
 
-  LOG_MARK(0xB0, "[B0] boot\r\n");
+  LOG_MARK(0xB0, "[B0] boot v31 %s %s\r\n", __DATE__, __TIME__);
   MPU_Config();  /* 必须在 Cache 初始化之前 */
   LOG_MARK(0xB1, "[B1] mpu ok\r\n");
   /* USER CODE BEGIN 1 */
