@@ -185,6 +185,7 @@ int main(void)
   /* ===== 裸诊断闸门结束（v3：流程继续向下，逐步验证外设初始化） ===== */
 
   LOG_MARK(0xB0, "[B0] boot v31 %s %s\r\n", __DATE__, __TIME__);
+  HAL_GPIO_WritePin(GPIOG, GPIO_PIN_10, GPIO_PIN_SET);   /* LED0 灭 = B0 已执行 */
   MPU_Config();  /* 必须在 Cache 初始化之前 */
   LOG_MARK(0xB1, "[B1] mpu ok\r\n");
   /* USER CODE BEGIN 1 */
@@ -257,6 +258,7 @@ int main(void)
   MX_GPIO_Init();
   MX_DMA2D_Init();
   LOG_MARK(0xB5, "[B5] gpio/dma2d ok\r\n");
+  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_10, GPIO_PIN_SET);   /* LED1 灭 = 已到 B5 */
 
   MX_DCMIPP_Init();
   LOG_MARK(0xB6, "[B6] dcmipp ok\r\n");
