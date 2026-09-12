@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="google" content="notranslate">
+<title>智能茶机 · 一盏</title>
+<style>
+  :root{
+    --serif:"Noto Serif SC","Source Han Serif SC","Songti SC","STSong","SimSun",serif;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Cascadia Mono",monospace;
+    --paper:#f4efe2; --paper-deep:#ece5d2; --card:#fffdf6;
+    --ink:#322f28; --ink-soft:#6d675a; --dim:#98917d;
+    --pine:#3d5c43; --pine-deep:#2d4534; --pine-mist:#dfe8da;
+    --cinnabar:#b0492f; --cinnabar-deep:#93392a;
+    --amber:#c18a3e; --amber-deep:#a06c28; --gold:#a8842c;
+    --line:#e3dcc5; --line-soft:#eee8d6;
+  }
+  *{box-sizing:border-box}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    margin:0 auto;padding:14px 14px 42px;max-width:600px;color:var(--ink);
+    -webkit-tap-highlight-color:transparent;
+    background:
+      radial-gradient(#ddd5bf 1px, transparent 1.4px),
+      radial-gradient(1000px 480px at 88% -6%, #3d5c4316, transparent 62%),
+      radial-gradient(820px 420px at -12% 12%, #c18a3e12, transparent 60%),
+      var(--paper);
+    background-size:26px 26px,auto,auto,auto;
+    background-attachment:fixed;
+  }
+
+  /* ── 页眉 ───────────────────────────── */
+  .mast{display:flex;justify-content:space-between;align-items:stretch;gap:12px;
+        padding:16px 4px 14px;border-bottom:1px solid var(--line);position:relative;margin-bottom:14px}
+  .mast::after{content:'';position:absolute;bottom:-1px;left:0;width:72px;height:2px;
+        background:linear-gradient(90deg,var(--cinnabar),transparent)}
+  .brand{display:flex;align-items:center;gap:12px}
+  h1{font-family:var(--serif);font-size:1.65rem;font-weight:700;letter-spacing:.14em;
+     margin:0;color:var(--ink);user-select:none;cursor:default;
+     display:flex;align-items:center;gap:10px}
+  .seal{width:34px;height:34px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+        font-family:var(--serif);font-size:1.05rem;color:#f6efe0;
+        background:linear-gradient(150deg,#bd5340,var(--cinnabar-deep));
+        border-radius:7px;transform:rotate(-4deg);
+        box-shadow:inset 0 0 0 1.5px #f6efe055, 0 3px 8px -3px #93392a80;
+        transition:transform .3s ease;user-select:none}
+  .seal:hover{transform:rotate(0deg) scale(1.06)}
+  .brand-sub{font-family:var(--mono);font-size:.66rem;letter-spacing:.3em;color:var(--dim);
+             margin-top:6px;text-transform:uppercase}
+  .conn{display:flex;align-items:center;gap:7px;margin-top:10px;font-size:.82rem;color:var(--ink-soft)}
+  .verse{writing-mode:vertical-rl;font-family:var(--serif);font-size:.8rem;color:var(--dim);
+         letter-spacing:.38em;padding-left:12px;border-left:1px solid var(--line);
+         user-select:none;cursor:default}
+
+  /* ── 状态点：呼吸光圈（轻科技感） ────── */
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#c6bfa9}
+  .dot.on{background:var(--pine);animation:pulse 2.2s ease-out infinite}
+  .dot.off{background:var(--cinnabar)}
+  @keyframes pulse{
+    0%{box-shadow:0 0 0 0 #3d5c4350}
+    70%{box-shadow:0 0 0 8px transparent}
+    100%{box-shadow:0 0 0 0 transparent}
+  }
+
+  /* ── 卡片 ───────────────────────────── */
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;
+        padding:15px 15px 14px;margin:14px 0;
+        box-shadow:0 1px 0 #ffffffcc inset, 0 12px 28px -20px #4a443355;
+        animation:rise .45s ease both}
+  @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .card h2{font-family:var(--serif);font-size:1.02rem;letter-spacing:.08em;margin:2px 0 12px;
+           display:flex;justify-content:space-between;align-items:center;gap:8px;
+           padding-left:11px;position:relative;font-weight:700}
+  .card h2::before{content:'';position:absolute;left:0;top:4px;bottom:4px;width:3px;border-radius:2px;
+           background:linear-gradient(var(--pine),var(--amber))}
+  .row{display:flex;justify-content:space-between;align-items:center;margin:6px 0}
+  .big{font-family:var(--mono);font-size:1.75rem;font-weight:600;letter-spacing:-.02em}
+  .unit{font-size:.82rem;color:var(--dim);font-weight:400;margin-left:2px}
+  .muted{color:var(--dim);font-size:.8rem;line-height:1.5}
+  .hidden{display:none!important}
+
+  /* ── 标签 ───────────────────────────── */
+  .tag{font-size:.68rem;letter-spacing:.08em;padding:3px 9px;border-radius:99px;
+       background:var(--paper-deep);color:var(--dim);border:1px solid var(--line);white-space:nowrap}
+  .tag.live{background:var(--pine-mist);color:var(--pine-deep);border-color:#c3d4bd}
+  .tag.admin{background:#f3e2c8;color:var(--gold);border-color:#e3cd9e}
+
+  /* ── 按钮 ───────────────────────────── */
+  button{font-family:inherit;font-size:.95rem;letter-spacing:.06em;padding:.62rem 1rem;
+         border:0;border-radius:10px;cursor:pointer;color:#f4f0e3;
+         background:linear-gradient(150deg,var(--pine),var(--pine-deep));
+         box-shadow:0 4px 14px -6px #2d453485, inset 0 1px 0 #ffffff26;
+         transition:transform .08s ease, filter .15s ease}
+  button:hover{filter:brightness(1.07)}
+  button:active{transform:translateY(1px) scale(.99);filter:brightness(.94)}
+  button.sec{background:var(--paper-deep);color:var(--ink);border:1px solid var(--line);box-shadow:none}
+  button.stop{background:linear-gradient(150deg,var(--cinnabar),var(--cinnabar-deep));
+              box-shadow:0 4px 14px -6px #93392a85, inset 0 1px 0 #ffffff26}
+  button.hot{background:linear-gradient(150deg,var(--amber),var(--amber-deep));
+             box-shadow:0 4px 14px -6px #a06c2885, inset 0 1px 0 #ffffff26}
+  button.gold{background:linear-gradient(150deg,#bd9438,#a37c24);
+              box-shadow:0 4px 14px -6px #a37c2485, inset 0 1px 0 #ffffff26}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+  .grid4 button{padding:.55rem .2rem;line-height:1.35}
+
+  /* ── 步进器 ─────────────────────────── */
+  .stepper{display:flex;align-items:center;gap:6px;background:var(--paper);
+           border:1px solid var(--line);border-radius:12px;padding:4px;margin-top:6px}
+  .stepper button{padding:.42rem .7rem;min-width:44px;box-shadow:none;font-family:var(--mono)}
+  .stepper .val{flex:1;text-align:center;font-weight:600;font-size:1.05rem;font-family:var(--mono)}
+
+  /* ── 温度曲线 ───────────────────────── */
+  canvas{width:100%;height:90px;display:block;border-radius:10px;margin-top:10px;
+         background:linear-gradient(#fbf8ee,#f6f1e2);border:1px solid var(--line-soft)}
+
+  /* ── 浓度 4 档 ──────────────────────── */
+  #levels button{display:block;border-radius:12px;padding:.7rem .2rem}
+  #levels button b{font-family:var(--serif);font-size:.95rem;letter-spacing:.06em}
+  #levels button:not(.sec){outline:1px solid #ffffff40;outline-offset:-1px}
+
+  /* ── 茶仓（茶牌） ───────────────────── */
+  #bins button{display:flex;justify-content:space-between;align-items:center;width:100%;
+               margin:8px 0;padding:.8rem 1rem}
+  #bins .binname{font-family:var(--serif);font-weight:700;font-size:1.05rem;letter-spacing:.12em}
+  #bins .binsub{font-size:.72rem;opacity:.75;font-family:var(--mono);letter-spacing:.05em}
+  #bins .empty{background:transparent;color:var(--dim);border:1px dashed var(--line);box-shadow:none}
+
+  /* ── 排队号牌 ───────────────────────── */
+  ul.appts,ul.queue{list-style:none;padding:0;margin:8px 0 0}
+  ul.appts li,ul.queue li{display:flex;justify-content:space-between;align-items:center;gap:10px;
+       padding:9px 12px;background:var(--paper);border:1px solid var(--line-soft);
+       border-radius:12px;margin:7px 0;font-size:.9rem}
+  .qbadge{font-family:var(--serif);font-weight:700;font-size:1.1rem;min-width:38px;height:38px;
+          border-radius:8px;display:flex;align-items:center;justify-content:center;
+          color:#f5f1e4;flex:0 0 auto;
+          background:linear-gradient(160deg,#4a6b52,#33493a);
+          box-shadow:inset 0 1px 0 #ffffff22, 0 3px 8px -3px #33493a90}
+  .qbadge.queued{background:linear-gradient(160deg,#93a08c,#77856f)}
+  .qbadge.brewing{background:linear-gradient(160deg,#4a6b52,#33493a)}
+  .qbadge.wait_pour,.qbadge.pouring{background:linear-gradient(160deg,var(--amber),var(--amber-deep))}
+  .qbadge.done{background:linear-gradient(160deg,#7fa383,#5f8365)}
+  .qbadge.wasted{background:linear-gradient(160deg,var(--cinnabar),var(--cinnabar-deep))}
+  .qmid{flex:1}
+  .qname{font-weight:600;font-family:var(--serif);letter-spacing:.05em}
+  .qstate{font-size:.78rem;color:var(--dim);margin-top:1px}
+
+  /* ── 进度条：渐变 + 流光 ────────────── */
+  .bar{height:22px;background:var(--paper-deep);border:1px solid var(--line);
+       border-radius:99px;overflow:hidden}
+  .bar > i{display:block;height:100%;width:0;border-radius:99px;position:relative;
+           background:linear-gradient(90deg,var(--pine) 0%,#6d8f63 60%,var(--amber) 100%);
+           transition:width .4s ease}
+  .bar > i::after{content:'';position:absolute;inset:0;border-radius:99px;
+           background:linear-gradient(90deg,transparent 20%,#ffffff4d 50%,transparent 80%);
+           background-size:200% 100%;animation:shimmer 1.8s linear infinite}
+  @keyframes shimmer{from{background-position:120% 0}to{background-position:-80% 0}}
+
+  /* ── 洗杯闸门 ───────────────────────── */
+  #washPrompt{border:1px dashed var(--cinnabar);background:#b0492f0d;border-radius:12px;padding:12px}
+
+  /* ── 表单 ───────────────────────────── */
+  input[type=text],input[type=number],select{font-size:.95rem;padding:.55rem .7rem;
+       border:1px solid var(--line);border-radius:10px;width:100%;
+       background:var(--card);color:var(--ink);transition:border-color .15s, box-shadow .15s}
+  input:focus,select:focus{outline:none;border-color:var(--pine);box-shadow:0 0 0 3px #3d5c4322}
+  .inline{display:flex;gap:8px;align-items:center}.inline > *{margin:0}
+
+  /* ── 开发者终端（深色科技感） ───────── */
+  .devbtn{font-size:.75rem;color:var(--dim);background:none;box-shadow:none;
+          border:1px solid transparent;padding:2px 8px}
+  .devbtn:hover{color:var(--pine);filter:none}
+  .devbtn.gold{color:#fff;background:linear-gradient(150deg,#bd9438,#a37c24);
+               border-radius:8px;padding:4px 12px}
+  .inline input{flex:1;min-width:0}
+  .sendbtn{flex:0 0 auto;white-space:nowrap;padding:.55rem 1.3rem}
+  .logwrap{position:relative}
+  #log{font-family:var(--mono);font-size:.78rem;color:#b9d9b4;background:#2b2822;
+       border:1px solid #3f3a30;border-radius:10px;padding:10px 44px 10px 12px;line-height:1.55;
+       white-space:pre-wrap;max-height:300px;overflow:auto}
+  #log::-webkit-scrollbar{width:8px}
+  #log::-webkit-scrollbar-thumb{background:#4a4436;border-radius:4px}
+  #log::-webkit-scrollbar-track{background:transparent}
+  #copybtn{position:absolute;top:8px;right:8px;width:28px;height:28px;padding:0;
+       display:flex;align-items:center;justify-content:center;border-radius:8px;
+       background:#3a362c;color:#b9d9b4;border:1px solid #55503f;box-shadow:none;
+       opacity:.75;transition:opacity .15s, color .2s, border-color .2s}
+  #copybtn:hover{opacity:1;filter:none;background:#464135}
+  #copybtn:active{transform:scale(.92)}
+  #copybtn.ok{color:#8fd694;border-color:#8fd69455}
+
+  /* ── 弹框 ───────────────────────────── */
+  .modal{position:fixed;inset:0;background:#2e2a2499;backdrop-filter:blur(4px);
+         display:none;align-items:center;justify-content:center;padding:16px;z-index:50}
+  .modal.show{display:flex}
+  .modal .box{background:var(--card);border:1px solid var(--line);border-radius:18px;
+              padding:22px;max-width:360px;width:100%;
+              box-shadow:0 24px 60px -20px #00000066;animation:pop .25s ease both}
+  @keyframes pop{from{opacity:0;transform:scale(.94) translateY(6px)}to{opacity:1;transform:none}}
+  .modal h3{font-family:var(--serif);letter-spacing:.08em;margin:0 0 8px}
+  .modal .code{font-family:var(--mono);font-size:2rem;font-weight:700;letter-spacing:.3rem;
+               text-align:center;color:var(--gold);margin:10px 0}
+  .modal .btns{display:flex;gap:8px;margin-top:14px}
+  .modal .btns button{flex:1}
+
+  /* ── 茶仓管理：模式选择 / 换茶流程 ──── */
+  .modegrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0 2px}
+  .modecard{background:var(--paper);border:1px solid var(--line);color:var(--ink);
+       border-radius:14px;padding:14px 10px;box-shadow:none;text-align:center;
+       transition:border-color .15s, background .15s, transform .08s}
+  .modecard:hover{border-color:var(--pine);background:var(--pine-mist);filter:none}
+  .modecard:active{transform:scale(.97)}
+  .modeico{font-size:1.5rem;line-height:1}
+  .modename{font-family:var(--serif);font-weight:700;letter-spacing:.14em;margin:7px 0 4px}
+  .modedesc{font-size:.7rem;color:var(--dim);line-height:1.55}
+  .steps{display:flex;justify-content:center;gap:6px;margin:4px 0 10px}
+  .step{font-size:.72rem;padding:3px 10px;border-radius:99px;letter-spacing:.05em;
+       background:var(--paper-deep);color:var(--dim);border:1px solid var(--line);
+       transition:background .2s,color .2s}
+  .step.on{background:var(--pine-mist);color:var(--pine-deep);border-color:#c3d4bd}
+  .step.cur{box-shadow:0 0 0 3px #3d5c4326}
+  .binvis{position:relative;width:70px;height:66px;margin:2px auto}
+  .binbody{position:absolute;bottom:0;left:9px;right:9px;height:44px;border-radius:8px 8px 11px 11px;
+       background:linear-gradient(160deg,#4a6b52,#33493a);
+       box-shadow:inset 0 2px 4px #ffffff22, 0 4px 10px -5px #33493a80}
+  .lidcap{position:absolute;bottom:47px;left:5px;right:5px;height:10px;border-radius:6px;
+       background:linear-gradient(160deg,var(--amber),var(--amber-deep));
+       box-shadow:0 2px 6px -2px #00000055;
+       transition:transform .8s ease}
+  .binvis.open .lidcap{transform:translateY(-16px) rotate(-9deg);
+       animation:hover 1.6s .8s ease-in-out infinite alternate}
+  @keyframes hover{from{transform:translateY(-16px) rotate(-9deg)}to{transform:translateY(-19px) rotate(-9deg)}}
+  .refillstate{text-align:center;font-family:var(--serif);letter-spacing:.08em;
+       margin:8px 0 12px;min-height:1.4em}
+
+  .foot{text-align:center;color:var(--dim);font-size:.72rem;letter-spacing:.32em;
+        font-family:var(--serif);margin:24px 0 4px;user-select:none}
+</style>
+</head>
+<body>
+
+  <header class="mast">
+    <div>
+      <div class="brand">
+        <h1 id="title">智能茶机 <span id="admintag" class="tag admin hidden">管理中</span></h1>
+        <div class="seal" aria-hidden="true">茶</div>
+      </div>
+      <div class="brand-sub">Smart Tea Atelier · WS Bridge</div>
+      <div class="conn"><span id="dot" class="dot"></span><span id="status">连接中…</span>
+        <span id="simtag" class="tag">本地模拟</span></div>
+    </div>
+    <div class="verse" aria-hidden="true">且将新火试新茶</div>
+  </header>
+
+  <!-- 热水器 -->
+  <div class="card">
+    <h2>💧 即热热水器 <span id="hwlink" class="tag">Link ?</span></h2>
+    <div class="row">
+      <div><div class="big"><span id="hwtemp">--</span><span class="unit">°C</span></div><div class="muted">实时水温</div></div>
+      <div style="text-align:right"><div class="big"><span id="hwml">--</span><span class="unit">ml</span></div><div class="muted">实时水量</div></div>
+    </div>
+    <canvas id="hwchart"></canvas>
+    <div class="muted" style="margin:8px 0 4px">出水温度曲线（最近 60 次）</div>
+    <div id="hwctrl" class="hidden">
+    <div class="grid2" style="margin-top:10px">
+      <div><div class="muted">设定水量（茶罐 350ml）</div>
+        <div class="stepper"><button class="sec" onclick="adj('setml',-50)">−50</button>
+          <span class="val"><span id="setml">300</span><span class="unit">ml</span></span>
+          <button class="sec" onclick="adj('setml',50)">+50</button></div></div>
+      <div><div class="muted">设定温度</div>
+        <div class="stepper"><button class="sec" onclick="adj('settemp',-5)">−5</button>
+          <span class="val"><span id="settemp">95</span><span class="unit">°C</span></span>
+          <button class="sec" onclick="adj('settemp',5)">+5</button></div></div>
+    </div>
+    <div class="grid2" style="margin-top:10px">
+      <button class="hot" onclick="hotwater()">▶ 出水</button>
+      <button class="stop" onclick="send({cmd:'stophw'})">■ 停止出水</button>
+    </div>
+    </div>
+  </div>
+
+  <!-- 浓度 4 档 -->
+  <div class="card">
+    <h2>🍃 茶叶浓度 <span class="tag" id="lvtag">标准</span></h2>
+    <div id="levels" class="grid4"></div>
+    <div class="muted" style="margin-top:8px">下单即按此浓度冲泡（当前水量 300ml）。</div>
+  </div>
+
+  <!-- 选茶下单 -->
+  <div class="card">
+    <h2>🍵 选茶下单 <button id="mgrbtn" class="devbtn gold" style="color:#fff" onclick="reqAdmin()">管理</button></h2>
+    <div class="muted" style="margin:-4px 0 6px">点击茶牌即排队下单</div>
+    <div id="bins"><div class="muted">（等待茶仓数据…）</div></div>
+  </div>
+
+  <!-- 排队叫号 -->
+  <div class="card">
+    <h2>🎫 排队叫号 <span class="tag">最多 3 位</span></h2>
+    <ul id="queue" class="queue"><li class="muted">（当前无排队）</li></ul>
+  </div>
+
+  <!-- 当前一杯进度 -->
+  <div class="card" id="progcard" style="display:none">
+    <h2>⏳ 当前制作</h2>
+    <div id="progwrap" style="display:block">
+      <div class="row"><span id="phase" class="qname">Idle</span><span id="progpct" class="muted">0%</span></div>
+      <div class="bar"><i id="progbar"></i></div>
+    </div>
+    <!-- 洗杯闸门：仅当机器停在 WAIT_WASH 且当前这单是"我"下的，才露出 -->
+    <div id="washPrompt" class="hidden" style="margin-top:12px">
+      <div class="muted" style="color:var(--cinnabar);margin-bottom:8px;line-height:1.5">🧼 <b>出茶完成。</b>请移开茶杯，在出水口下方放上 <b>废水罐</b>；放好后再开始清洗（会放约 100ml 热水冲洗杯路并抽干）。</div>
+      <button class="gold" style="width:100%" onclick="confirmWash()">✔ 已放好废水罐，开始清洗</button>
+    </div>
+  </div>
+
+  <!-- 预约 -->
+  <div class="card">
+    <h2>⏰ 预约下单 <span class="tag">浏览器端</span></h2>
+    <div class="inline">
+      <select id="apptbin" style="flex:2"></select>
+      <input id="apptmin" type="number" value="15" min="1" max="720" style="flex:1" title="几分钟后">
+      <span class="muted">分钟后</span><button onclick="addAppt()">添加</button>
+    </div>
+    <div class="muted" style="margin-top:6px">注：预约在本页面倒计时，到点自动下单排队；关闭页面即失效。</div>
+    <ul id="appts" class="appts"></ul>
+  </div>
+
+  <!-- 急停 -->
+  <div class="card">
+    <button class="stop" style="width:100%;font-size:1.05rem;padding:.8rem;letter-spacing:.1em" onclick="if(confirm('急停将清空整个队列，确定？')) send({cmd:'abort'})">■ 停止 / 急停（清空队列）</button>
+  </div>
+
+  <!-- 开发者模式 -->
+  <div id="devcard" class="card hidden">
+    <h2>🛠 开发者模式 <button class="devbtn" onclick="toggleDev(false)">隐藏</button></h2>
+    <div class="inline"><input id="rawin" type="text" placeholder='任意命令，如 {"cmd":"order","bin":0,"lv":1}'><button class="sendbtn" onclick="sendRaw()">发送</button></div>
+    <div class="muted" style="margin:8px 0 4px">原始链路日志（&gt;&gt; 发送 / &lt;&lt; 接收）</div>
+    <div class="logwrap">
+      <div id="log"></div>
+      <button id="copybtn" title="复制全部日志" onclick="copyLog()"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+    </div>
+  </div>
+  <div style="text-align:center;margin:14px 0"><button class="devbtn" onclick="tapTitle()">·</button></div>
+
+  <div class="foot">一盏清欢 · 禅茶一味</div>
+
+  <!-- 出茶二次确认弹框 -->
+  <div id="pourModal" class="modal"><div class="box">
+    <h3>🫖 确认出茶</h3>
+    <p id="pourText" class="muted">请确认杯子已放好，即将倒出滚烫茶水。</p>
+    <div class="btns">
+      <button class="sec" onclick="closePour()">取消</button>
+      <button class="hot" onclick="confirmPour()">确认出茶（烫！）</button>
+    </div>
+  </div></div>
+
+  <!-- 管理令牌：输码弹框 -->
+  <div id="adminModal" class="modal"><div class="box">
+    <h3>🔐 管理验证</h3>
+    <p class="muted">请查看<b>机器屏幕</b>上显示的 4 位验证码并输入：</p>
+    <input id="adminCode" type="number" inputmode="numeric" placeholder="4 位验证码" style="text-align:center;font-size:1.4rem;letter-spacing:.3rem;font-family:var(--mono)">
+    <p id="adminErr" class="muted" style="color:var(--cinnabar);min-height:1.2em"></p>
+    <div class="btns">
+      <button class="sec" onclick="cancelAdmin()">取消</button>
+      <button class="gold" onclick="verifyAdmin()">解锁管理</button>
+    </div>
+  </div></div>
+
+  <!-- 茶仓管理：更名 / 换茶 -->
+  <div id="binModal" class="modal"><div class="box">
+    <h3 id="binTitle">茶仓管理</h3>
+    <!-- ① 模式选择 -->
+    <div id="binModePick">
+      <div class="modegrid">
+        <button class="modecard" onclick="binPickMode('rename')">
+          <div class="modeico">🏷</div>
+          <div class="modename">更 名</div>
+          <div class="modedesc">仅改茶名标签<br>不动仓盖与漏斗</div>
+        </button>
+        <button class="modecard" onclick="binPickMode('refill')">
+          <div class="modeico">🫖</div>
+          <div class="modename">换 茶</div>
+          <div class="modedesc">开仓盖投新茶<br>走完整开关仓流程</div>
+        </button>
+      </div>
+      <div class="btns"><button class="sec" onclick="closeBin()">取消</button></div>
+    </div>
+    <!-- ② 更名 -->
+    <div id="binRename" class="hidden">
+      <p class="muted">输入新的茶名（留空 = 清空该仓）：</p>
+      <input id="binNameInput" type="text" maxlength="20" placeholder="茶名，如：龙井">
+      <div class="btns">
+        <button class="sec" onclick="binBack()">返回</button>
+        <button onclick="doRename()">确认更名</button>
+      </div>
+    </div>
+    <!-- ③ 换茶 -->
+    <div id="binRefill" class="hidden">
+      <div id="refillInput">
+        <p class="muted">即将投入的新茶名称：</p>
+        <input id="refillNameInput" type="text" maxlength="20" placeholder="茶名，如：碧螺春">
+        <div class="btns">
+          <button class="sec" onclick="binBack()">返回</button>
+          <button class="hot" onclick="startRefill()">开仓换茶</button>
+        </div>
+      </div>
+      <div id="refillFlow" class="hidden">
+        <div class="steps">
+          <span class="step" id="st1">① 开仓</span><span class="step" id="st2">② 投茶</span><span class="step" id="st3">③ 关仓</span>
+        </div>
+        <div class="binvis" id="binvis"><div class="lidcap"></div><div class="binbody"></div></div>
+        <div id="refillState" class="refillstate">开仓盖中…</div>
+        <button id="refillDone" class="hot hidden" style="width:100%" onclick="confirmRefill()">✔ 已投茶，关闭仓盖</button>
+      </div>
+    </div>
+  </div></div>
+
+<script>
+"use strict";
+const SIMULATE = true;
+
+let CLIENT_ID = localStorage.getItem('teacid');
+if(!CLIENT_ID){ CLIENT_ID = String((Date.now()%1000000)*1000 + Math.floor(Math.random()*1000)); localStorage.setItem('teacid', CLIENT_ID); }
+const MY = Number(CLIENT_ID) % 1000000;   // 0..999999；本地单用 0xFFFFFFFF，永不撞
+
+const set = { setml:300, settemp:95 };
+function adj(k,d){ set[k]+=d;
+  if(k==='setml'){ if(set[k]<0)set[k]=0; if(set[k]>350)set[k]=350; }
+  if(k==='settemp'){ if(set[k]<25)set[k]=25; if(set[k]>100)set[k]=100; }
+  document.getElementById(k).textContent=set[k];
+}
+function hotwater(){ send({cmd:'hotwater', ml:set.setml, temp:set.settemp}); }
+
+let ws=null, simTimer=null, isAdmin=false;
+function L(m){ const l=document.getElementById('log'); if(l) l.textContent=(m+"\n"+l.textContent).slice(0,6000); }
+function send(o){ const j=JSON.stringify(o); L(">> "+j);
+  if(SIMULATE){ simHandleCmd(o); return; }
+  if(ws&&ws.readyState===1) ws.send(j); else L("[未连接]");
+}
+function sendRaw(){ const v=document.getElementById('rawin').value.trim(); if(!v)return; L(">> "+v);
+  if(SIMULATE){ try{ simHandleCmd(JSON.parse(v)); }catch(e){ L("[模拟] 非JSON"); } }
+  else if(ws&&ws.readyState===1) ws.send(v);
+  document.getElementById('rawin').value='';
+}
+function connect(){ ws=new WebSocket("ws://"+location.hostname+":81/");
+  ws.onopen=()=>setConn(true); ws.onclose=()=>{ setConn(false); setTimeout(connect,1200); };
+  ws.onmessage=e=>{ L("<< "+e.data); try{ render(JSON.parse(e.data)); }catch(x){} };
+}
+function setConn(on){ document.getElementById('dot').className='dot '+(on?'on':'off');
+  document.getElementById('status').textContent=on?'已连接':'已断开，重连中…'; }
+
+/* ====== 浓度 4 档 ====== */
+const LV_NAME = ['淡','标准','浓','特浓'];
+let   LV_G    = [4.0, 6.0, 9.0, 12.0];    // 缺省；遥测若带 lvg 则以机器为准
+let   curLv   = 1;                        // 默认"标准"
+let   lvKey   = '';
+function renderLevels(){
+  const key = LV_G.join(',')+'|'+curLv;
+  if(key===lvKey) return; lvKey=key;
+  const box=document.getElementById('levels'); box.innerHTML='';
+  LV_NAME.forEach((n,i)=>{
+    const b=document.createElement('button');
+    b.className=(i===curLv)?'':'sec';
+    b.innerHTML='<b>'+n+'</b>';
+    b.onclick=()=>{ curLv=i; renderLevels(); };
+    box.appendChild(b);
+  });
+  document.getElementById('lvtag').textContent=LV_NAME[curLv];
+}
+
+/* ====== 渲染遥测 ====== */
+const tempHist=[];
+function render(d){
+  if(d.t!=='st') return;
+  setNum('hwtemp',d.hw_temp); setNum('hwml',d.hw_ml);
+  const lk=document.getElementById('hwlink');
+  lk.textContent=d.hw_link?'Link OK':'Link 断'; lk.className='tag '+(d.hw_link?'live':'');
+  if(typeof d.hw_temp==='number'){ tempHist.push(d.hw_temp); if(tempHist.length>60)tempHist.shift(); drawChart(); }
+
+  // 浓度克数表：机器给了就用机器的（十分之一克）
+  if(Array.isArray(d.lvg) && d.lvg.length===4){
+    const g=d.lvg.map(x=>x/10);
+    if(g.join(',')!==LV_G.join(',')){ LV_G=g; lvKey=''; }
+  }
+  renderLevels();
+
+  // 当前制作
+  const pc=document.getElementById('progcard');
+  const active=d.phase && d.phase!=='Idle';
+  pc.style.display=active?'block':'none';
+  if(active){ document.getElementById('phase').textContent=d.phase;
+    document.getElementById('progpct').textContent=(d.prog|0)+'%';
+    document.getElementById('progbar').style.width=(d.prog|0)+'%'; }
+
+  const q = d.queue||[];
+  // 洗杯闸门：①机器确实停在 WAIT_WASH ②且当前这单是"我"下的
+  const washWait = (typeof d.wash!=='undefined') ? !!d.wash
+                                                 : !!(d.phase && d.phase.indexOf('waste')>=0);
+  const act = q.find(x=>x.st==='pouring') || q.find(x=>x.st==='wait_pour');
+  const washMine = !!(act && act.owner===MY);
+  document.getElementById('washPrompt').classList.toggle('hidden', !(washWait && washMine));
+
+  renderBins(d.bins||[]);
+  renderQueue(q);
+  setAdmin(!!d.admin);
+  if(d.admin_wait && !isAdmin) hintAdminWait();
+  if(typeof d.entry==='number') refillTrack(d.entry);
+}
+function setNum(id,v){ const el=document.getElementById(id); if(el) el.textContent=(typeof v==='number')?v:'--'; }
+
+let binsKey='', lastBins=[];
+function renderBins(bins){
+  lastBins=bins;
+  const box=document.getElementById('bins'); const key=JSON.stringify(bins)+'|'+isAdmin;
+  if(key===binsKey) return; binsKey=key; box.innerHTML='';
+  const sel=document.getElementById('apptbin'); sel.innerHTML='';
+  if(!bins.length && !isAdmin){ box.innerHTML='<div class="muted">（暂无茶叶，请管理员录入）</div>'; }
+  for(let i=0;i<4;i++){
+    const b=bins.find(x=>x.i===i);
+    const btn=document.createElement('button');
+    if(b){
+      btn.innerHTML='<span class="binname">泡 '+esc(b.n)+'</span><span class="binsub">仓'+(i+1)+(isAdmin?' ✎管理':'')+'</span>';
+      if(isAdmin){ btn.onclick=()=>openBin(i); }
+      else        { btn.onclick=()=>order(i); }
+      const o=document.createElement('option'); o.value=i; o.textContent='仓'+(i+1)+' · '+b.n; sel.appendChild(o);
+    }else{
+      btn.className='empty';
+      if(isAdmin){ btn.innerHTML='<span class="binname">仓'+(i+1)+' (空)</span><span class="binsub">+ 录入</span>'; btn.onclick=()=>openBin(i); }
+      else       { btn.innerHTML='<span class="binname">仓'+(i+1)+' (空)</span><span class="binsub">—</span>'; btn.disabled=true; }
+    }
+    box.appendChild(btn);
+  }
+  if(!sel.options.length){ const o=document.createElement('option'); o.textContent='（无茶仓）'; sel.appendChild(o); }
+}
+function order(i){ send({cmd:'order',bin:i,owner:MY,lv:curLv}); }
+
+/* ====== 排队叫号 ====== */
+const QSTATE={ queued:'排队中', brewing:'泡制中…', pouring:'出茶中…', wait_pour:'请出茶', done:'已完成', wasted:'已作废(超时)' };
+let waitPourShown={};
+function renderQueue(q){
+  const ul=document.getElementById('queue'); ul.innerHTML='';
+  if(!q.length){ ul.innerHTML='<li class="muted">（当前无排队）</li>'; waitPourShown={}; return; }
+  q.forEach(item=>{
+    const li=document.createElement('li');
+    const tk=String(item.tk).padStart(2,'0');
+    let sub=QSTATE[item.st]||item.st;
+    if(item.st==='wait_pour' && typeof item.left==='number'){
+      const mm=Math.floor(item.left/60), ss=String(item.left%60).padStart(2,'0');
+      sub='请在 '+mm+':'+ss+' 内确认出茶，否则作废';
+    }
+    li.innerHTML='<span class="qbadge '+item.st+'">'+tk+'</span>'+
+      '<span class="qmid"><div class="qname">'+esc(item.name||'?')+'</div><div class="qstate">'+sub+'</div></span>';
+    if(item.st==='wait_pour'){
+      const mine = (item.owner===MY);
+      const b=document.createElement('button'); b.style.padding='.4rem .8rem';
+      if(mine){
+        b.className='hot'; b.textContent='出茶';
+        b.onclick=()=>openPour(item.tk, item.name);
+        if(!waitPourShown[item.tk]){ waitPourShown[item.tk]=1; openPour(item.tk,item.name); }
+      }else{
+        b.className='sec'; b.textContent='他人订单'; b.disabled=true;   // 本地单 / 别人的单：灰化
+      }
+      li.appendChild(b);
+    } else if(item.st==='pouring'){
+      closePourIf(item.tk);   // 已在出茶：不给按钮，顺手收起可能还开着的弹框
+    } else if(item.st==='queued'){
+      const b=document.createElement('button'); b.className='sec'; b.textContent='取消'; b.style.padding='.4rem .8rem';
+      b.onclick=()=>send({cmd:'cancel',tk:item.tk}); li.appendChild(b);
+    }
+    ul.appendChild(li);
+  });
+}
+
+/* ====== 出茶二次确认 ====== */
+let pourTk=0;
+function openPour(tk,name){ pourTk=tk;
+  document.getElementById('pourText').textContent='【'+String(tk).padStart(2,'0')+'号 '+(name||'')+'】已泡好。请确认杯子已放好，即将倒出滚烫茶水。';
+  document.getElementById('pourModal').classList.add('show');
+}
+function closePour(){ document.getElementById('pourModal').classList.remove('show'); }
+function closePourIf(tk){ if(pourTk===tk) closePour(); }
+function confirmPour(){ send({cmd:'pour',tk:pourTk,owner:MY}); closePour(); }
+function confirmWash(){ send({cmd:'confirm'}); }
+
+/* ====== 茶仓管理：更名 / 换茶 ======
+   更名：只发 setname，不动硬件。
+   换茶：bin_open →（等遥测 entry==E2_WAIT_FILL，投茶）→ bin_close
+        →（等遥测 entry==E2_DONE/IDLE）→ setname。
+   流程由遥测 entry 字段驱动；超时只提示，不锁死（机器屏幕上可继续/中止）。 */
+let binIdx=0, refillTimer=null, refillPhase='';   /* '' | 'opening' | 'waitfill' | 'closing' */
+function openBin(i){
+  binIdx=i;
+  const b=lastBins.find(x=>x.i===i);
+  document.getElementById('binTitle').textContent='仓 '+(i+1)+' · 茶仓管理'+(b?'（'+b.n+'）':'（空）');
+  document.getElementById('binNameInput').value=b?b.n:'';
+  document.getElementById('refillNameInput').value='';
+  document.getElementById('binModePick').classList.remove('hidden');
+  document.getElementById('binRename').classList.add('hidden');
+  document.getElementById('binRefill').classList.add('hidden');
+  document.getElementById('binModal').classList.add('show');
+}
+function binPickMode(m){
+  document.getElementById('binModePick').classList.add('hidden');
+  if(m==='rename'){
+    document.getElementById('binRename').classList.remove('hidden');
+    document.getElementById('binNameInput').focus();
+  }else{
+    document.getElementById('refillInput').classList.remove('hidden');
+    document.getElementById('refillFlow').classList.add('hidden');
+    document.getElementById('binRefill').classList.remove('hidden');
+    document.getElementById('refillNameInput').focus();
+  }
+}
+function binBack(){
+  document.getElementById('binRename').classList.add('hidden');
+  document.getElementById('binRefill').classList.add('hidden');
+  document.getElementById('binModePick').classList.remove('hidden');
+}
+function closeBin(){ refillPhase=''; clearTimeout(refillTimer); document.getElementById('binModal').classList.remove('show'); }
+function doRename(){
+  const name=document.getElementById('binNameInput').value.slice(0,20);
+  send({cmd:'setname',bin:binIdx,name:name});
+  if(SIMULATE) simSetName(binIdx,name);
+  closeBin();
+}
+function setStep(n){
+  [1,2,3].forEach(i=>{ const el=document.getElementById('st'+i);
+    el.classList.toggle('on',i<=n); el.classList.toggle('cur',i===n); });
+}
+function setLid(open){ document.getElementById('binvis').classList.toggle('open',open); }
+function startRefill(){
+  const name=document.getElementById('refillNameInput').value.trim();
+  if(!name){ alert('请先填写新茶名称'); return; }
+  document.getElementById('refillInput').classList.add('hidden');
+  document.getElementById('refillFlow').classList.remove('hidden');
+  document.getElementById('refillDone').classList.add('hidden');
+  refillPhase='opening';
+  setStep(1); setLid(true);
+  document.getElementById('refillState').textContent='开仓盖中 · 漏斗移至仓 '+(binIdx+1)+' …';
+  send({cmd:'bin_open',bin:binIdx});
+  clearTimeout(refillTimer);
+  refillTimer=setTimeout(()=>{ if(refillPhase==='opening')
+    document.getElementById('refillState').textContent='⏳ 等待机器开仓…（以机器屏幕为准）'; },12000);
+}
+function confirmRefill(){
+  document.getElementById('refillDone').classList.add('hidden');
+  refillPhase='closing';
+  setStep(3); setLid(false);
+  document.getElementById('refillState').textContent='关仓盖中…';
+  send({cmd:'bin_close',bin:binIdx});
+  clearTimeout(refillTimer);
+  refillTimer=setTimeout(()=>{ if(refillPhase==='closing')
+    document.getElementById('refillState').textContent='⏳ 等待机器关仓…（以机器屏幕为准）'; },12000);
+}
+/* 遥测 entry（E2 状态：0空闲 4待投茶 7完成）驱动换茶流程 */
+function refillTrack(entry){
+  if(refillPhase==='opening' && entry===4){
+    refillPhase='waitfill';
+    clearTimeout(refillTimer);
+    setStep(2);
+    document.getElementById('refillState').textContent='仓盖已开，请投入新茶';
+    document.getElementById('refillDone').classList.remove('hidden');
+  }else if(refillPhase==='closing' && (entry===7 || entry===0)){
+    refillPhase='';
+    clearTimeout(refillTimer);
+    const name=document.getElementById('refillNameInput').value.trim().slice(0,20);
+    send({cmd:'setname',bin:binIdx,name:name});
+    if(SIMULATE) simSetName(binIdx,name);
+    document.getElementById('refillState').textContent='✔ 换茶完成，仓 '+(binIdx+1)+' 已录入「'+name+'」';
+    refillTimer=setTimeout(closeBin,1200);
+  }
+}
+
+/* ====== 管理令牌 ====== */
+function reqAdmin(){
+  if(isAdmin){ if(confirm('退出管理模式？')) send({cmd:'admin_exit'}); return; }
+  send({cmd:'admin_req'});
+  document.getElementById('adminErr').textContent='';
+  document.getElementById('adminCode').value='';
+  document.getElementById('adminModal').classList.add('show');
+}
+function verifyAdmin(){
+  const c=parseInt(document.getElementById('adminCode').value,10);
+  if(!(c>=0&&c<=9999)){ document.getElementById('adminErr').textContent='请输入 4 位数字'; return; }
+  send({cmd:'admin_verify',code:c});
+  if(SIMULATE) simVerify(c);
+}
+function cancelAdmin(){ send({cmd:'admin_cancel'}); document.getElementById('adminModal').classList.remove('show'); }
+function setAdmin(on){
+  if(on===isAdmin) return; isAdmin=on;
+  document.getElementById('admintag').classList.toggle('hidden',!on);
+  document.getElementById('hwctrl').classList.toggle('hidden',!on);
+  document.getElementById('mgrbtn').textContent=on?'退出管理':'管理';
+  if(on){ document.getElementById('adminModal').classList.remove('show'); }
+  binsKey='';
+}
+function hintAdminWait(){}
+function esc(s){ return String(s).replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c])); }
+
+/* ====== 温度曲线 ====== */
+function drawChart(){
+  const c=document.getElementById('hwchart'),ctx=c.getContext('2d');
+  const w=c.width=c.clientWidth*devicePixelRatio,h=c.height=c.clientHeight*devicePixelRatio;
+  ctx.clearRect(0,0,w,h); if(tempHist.length<2)return;
+  const lo=0,hi=110,x=i=>i/(tempHist.length-1)*w,y=v=>h-(v-lo)/(hi-lo)*h;
+  ctx.strokeStyle='#e7e0ca';ctx.lineWidth=1;[25,50,75,100].forEach(g=>{ctx.beginPath();ctx.moveTo(0,y(g));ctx.lineTo(w,y(g));ctx.stroke();});
+  const li=tempHist.length-1;
+  const grad=ctx.createLinearGradient(0,0,0,h);
+  grad.addColorStop(0,'rgba(193,138,62,.28)'); grad.addColorStop(1,'rgba(193,138,62,0)');
+  ctx.beginPath();
+  tempHist.forEach((v,i)=>{i?ctx.lineTo(x(i),y(v)):ctx.moveTo(x(i),y(v));});
+  ctx.lineTo(x(li),h);ctx.lineTo(x(0),h);ctx.closePath();ctx.fillStyle=grad;ctx.fill();
+  ctx.beginPath();ctx.strokeStyle='#c18a3e';ctx.lineWidth=2*devicePixelRatio;ctx.lineJoin='round';ctx.lineCap='round';
+  tempHist.forEach((v,i)=>{i?ctx.lineTo(x(i),y(v)):ctx.moveTo(x(i),y(v));});ctx.stroke();
+  ctx.shadowColor='#c18a3e';ctx.shadowBlur=8*devicePixelRatio;
+  ctx.fillStyle='#c18a3e';ctx.beginPath();ctx.arc(x(li),y(tempHist[li]),3*devicePixelRatio,0,7);ctx.fill();
+  ctx.shadowBlur=0;
+}
+
+/* ====== 预约 ====== */
+const appts=[];
+function addAppt(){ const sel=document.getElementById('apptbin'); if(!sel.value)return;
+  const bin=parseInt(sel.value,10),min=Math.max(1,parseInt(document.getElementById('apptmin').value,10)||1);
+  appts.push({bin,lv:curLv,name:sel.options[sel.selectedIndex].textContent+' · '+LV_NAME[curLv],fire:Date.now()+min*60000}); renderAppts();
+}
+function renderAppts(){ const ul=document.getElementById('appts'); ul.innerHTML='';
+  appts.forEach((a,idx)=>{ const li=document.createElement('li');
+    const left=Math.max(0,Math.round((a.fire-Date.now())/1000)),mm=String(Math.floor(left/60)).padStart(2,'0'),ss=String(left%60).padStart(2,'0');
+    li.innerHTML='<span>'+esc(a.name)+' · <b style="font-family:var(--mono)">'+mm+':'+ss+'</b> 后下单</span>';
+    const del=document.createElement('button');del.className='sec';del.textContent='取消';del.style.padding='.3rem .7rem';
+    del.onclick=()=>{appts.splice(idx,1);renderAppts();}; li.appendChild(del); ul.appendChild(li);
+  });
+}
+setInterval(()=>{ const now=Date.now();let due=false;
+  for(let i=appts.length-1;i>=0;i--){ if(appts[i].fire<=now){ send({cmd:'order',bin:appts[i].bin,owner:MY,lv:appts[i].lv}); L('[预约下单] 仓'+(appts[i].bin+1)); appts.splice(i,1); due=true; } }
+  if(appts.length||due)renderAppts();
+},1000);
+
+/* ====== 开发者模式解锁 ====== */
+let tapN=0,tapT=0; function tapTitle(){bumpTap();}
+document.getElementById('title').addEventListener('click',bumpTap);
+function bumpTap(){ const now=Date.now();if(now-tapT>1500)tapN=0;tapT=now;tapN++; if(tapN>=5){toggleDev(true);tapN=0;} }
+function toggleDev(on){ document.getElementById('devcard').classList.toggle('hidden',!on); }
+
+/* ====== 日志一键复制 ====== */
+const ICO_COPY='<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+const ICO_OK='<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+function copyLog(){
+  const t=document.getElementById('log').textContent||'';
+  const done=()=>{ const b=document.getElementById('copybtn');
+    b.classList.add('ok'); b.innerHTML=ICO_OK;
+    setTimeout(()=>{ b.classList.remove('ok'); b.innerHTML=ICO_COPY; },1200);
+  };
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t).then(done).catch(()=>fallbackCopy(t,done));
+  }else fallbackCopy(t,done);
+}
+function fallbackCopy(t,cb){
+  const ta=document.createElement('textarea'); ta.value=t;
+  ta.style.position='fixed'; ta.style.opacity='0';
+  document.body.appendChild(ta); ta.select();
+  try{ document.execCommand('copy'); cb&&cb(); }catch(e){}
+  document.body.removeChild(ta);
+}
+
+/* ============================================================
+   模拟器（SIMULATE=true 时用）
+   ============================================================ */
+let sim={ bins:[{i:0,n:'龙井'},{i:1,n:'铁观音'}], hw_temp:24,hw_ml:0,target:95,
+          q:[], nextTk:1, admin:false, adminWait:false, adminCode:0, adminT:0,
+          phase:'Idle', prog:0, entrySt:0, entryT:0 };
+const QSIM={ BREW_MS:8000, POUR_MS:300000, SHOW_MS:3000, CODE_TTL:60000 };
+function simSetName(i,name){ const b=sim.bins.find(x=>x.i===i);
+  if(name===''){ sim.bins=sim.bins.filter(x=>x.i!==i);} else if(b){b.n=name;} else {sim.bins.push({i,n:name});sim.bins.sort((a,b)=>a.i-b.i);} }
+function simFindFree(){ for(let s=0;s<3;s++) if(!sim.q[s]) return s; return -1; }
+function simHandleCmd(o){
+  if(o.cmd==='hotwater'){ sim.target=o.temp; sim.hw_ml=o.ml||120; }
+  else if(o.cmd==='stophw'){ sim.target=24; }
+  else if(o.cmd==='order'){ const s=simFindFree(); if(s<0){L('[模拟] 队列满');return;}
+      const tk=sim.nextTk; sim.q[s]={tk,bin:o.bin,st:'queued',t:Date.now(),owner:(typeof o.owner!=='undefined'?o.owner:MY),lv:(o.lv|0)}; sim.nextTk=sim.nextTk>=3?1:sim.nextTk+1; L('[模拟] 下单→'+String(tk).padStart(2,'0')+' lv='+(o.lv|0)); }
+  else if(o.cmd==='pour'){ const it=sim.q.find(x=>x&&x.tk===o.tk); if(it&&it.st==='wait_pour'){ it.st='pouring'; it.t=Date.now(); } }
+  else if(o.cmd==='confirm'){ const it=sim.q.find(x=>x&&x.st==='pouring'); if(it){ it.st='done'; it.t=Date.now(); } }
+  else if(o.cmd==='cancel'){ const i=sim.q.findIndex(x=>x&&x.tk===o.tk&&x.st==='queued'); if(i>=0) sim.q[i]=null; }
+  else if(o.cmd==='abort'){ sim.q=[]; sim.phase='Idle'; sim.prog=0; }
+  else if(o.cmd==='admin_req'){ if(sim.admin){return;} if(sim.adminWait){L('[模拟] 管理占用中');return;}
+      sim.adminWait=true; sim.adminCode=Math.floor(1000+Math.random()*9000); sim.adminT=Date.now();
+      L('===== [模拟·屏幕弹窗] 管理验证码: '+sim.adminCode+' =====');
+      setTimeout(()=>{ if(sim.adminWait) alert('【模拟】机器屏幕显示验证码：'+sim.adminCode); },300); }
+  else if(o.cmd==='admin_cancel'){ sim.adminWait=false; sim.adminCode=0; }
+  else if(o.cmd==='admin_exit'){ sim.admin=false; }
+  else if(o.cmd==='bin_open'){ if(sim.entrySt===0){ sim.entrySt=2; sim.entryT=Date.now(); L('[模拟] 仓'+((o.bin|0)+1)+' 开仓盖'); } }
+  else if(o.cmd==='bin_close'){ if(sim.entrySt===4){ sim.entrySt=6; sim.entryT=Date.now(); L('[模拟] 关仓盖'); } }
+}
+function simVerify(c){
+  if(sim.adminWait && c===sim.adminCode){ sim.admin=true; sim.adminWait=false; sim.adminCode=0; document.getElementById('adminModal').classList.remove('show'); }
+  else { document.getElementById('adminErr').textContent='验证码错误'; }
+}
+function simTick(){
+  const t=Date.now();
+  sim.hw_temp += (sim.target-sim.hw_temp)*0.25+(Math.random()-0.5); sim.hw_temp=Math.max(20,Math.min(105,sim.hw_temp));
+  if(sim.adminWait && t-sim.adminT>=QSIM.CODE_TTL){ sim.adminWait=false; sim.adminCode=0; L('[模拟] 验证码超时作废'); }
+  const b=sim.q.find(x=>x&&x.st==='brewing');
+  if(b && t-b.t>=QSIM.BREW_MS){ b.st='wait_pour'; b.t=t; }
+  const busy=sim.q.some(x=>x&&(x.st==='brewing'||x.st==='pouring'||x.st==='wait_pour'));
+  if(!busy){ let best=null; sim.q.forEach(x=>{ if(x&&x.st==='queued'&&(!best||x.t<best.t)) best=x; });
+    if(best){ best.st='brewing'; best.t=t; } }
+  sim.q.forEach(x=>{ if(x&&x.st==='wait_pour'&&t-x.t>=QSIM.POUR_MS){ x.st='wasted'; x.t=t; } });
+  sim.q=sim.q.map(x=>{ if(x&&(x.st==='done'||x.st==='wasted')&&t-x.t>=QSIM.SHOW_MS) return null; return x; });
+  const cur=sim.q.find(x=>x&&x.st==='brewing'); const pouring=sim.q.find(x=>x&&x.st==='pouring');
+  let wash=0;
+  if(cur){ sim.phase='Brewing...'; sim.prog=Math.min(95,Math.round((t-cur.t)/QSIM.BREW_MS*95)); }
+  else if(pouring){ sim.phase='Remove cup, place waste bin'; sim.prog=96; wash=1; }
+  else { sim.phase='Idle'; sim.prog=0; }
+  const q=sim.q.filter(Boolean).map(x=>{ const o={tk:x.tk,bin:x.bin,st:x.st,name:(sim.bins.find(b=>b.i===x.bin)||{}).n||'?',owner:x.owner};
+    if(x.st==='wait_pour') o.left=Math.max(0,Math.round((QSIM.POUR_MS-(t-x.t))/1000)); return o; });
+  if(sim.entrySt===2 && t-sim.entryT>=2000){ sim.entrySt=4; sim.entryT=t; }
+  else if(sim.entrySt===6 && t-sim.entryT>=2000){ sim.entrySt=7; sim.entryT=t; }
+  else if(sim.entrySt===7 && t-sim.entryT>=300){ sim.entrySt=0; }
+  render({t:'st',hw_temp:Math.round(sim.hw_temp),hw_ml:sim.hw_ml,hw_link:1,
+          phase:sim.phase,prog:sim.prog,wash:wash,lvg:[40,60,90,120],entry:sim.entrySt,
+          bins:sim.bins,queue:q,admin:sim.admin?1:0,admin_wait:sim.adminWait?1:0});
+}
+
+window.addEventListener('load',()=>{
+  renderLevels();
+  if(SIMULATE){ document.getElementById('simtag').classList.remove('hidden');
+    setConn(true); document.getElementById('status').textContent='模拟模式（本地）';
+    simTimer=setInterval(simTick,500); simTick();
+  }else{ document.getElementById('simtag').classList.add('hidden'); connect(); }
+});
+</script>
+</body>
+</html>

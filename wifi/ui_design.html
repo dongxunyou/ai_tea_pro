@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>茶机全套 UI 设计稿 · 800×480</title>
+<style>
+  :root{
+    /* 高饱和茶韵（针对 RGB 屏泛白特性加深）*/
+    --serif:"Noto Serif SC","Songti SC","SimSun",serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --paper:#F1EBD6; --paper-deep:#E6DDBF; --card:#FFFBEF;
+    --ink:#292520; --dim:#8B8370;
+    --pine:#2E5535; --pine-mist:#D9E6D2; --pine-deep:#24452B;
+    --ok:#5C955A; --cinnabar:#BF4030; --cinnabar-deep:#9E3325;
+    --amber:#CE8A1E; --amber-deep:#A96F14; --gold:#A87C14;
+    --line:#D9CFB4;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{
+    min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:14px;
+    background:#26231d;padding:20px 0 40px;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+    user-select:none;color:var(--ink);
+  }
+  /* ── 切换栏 ── */
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;max-width:900px}
+  .tabs button{
+    border:1px solid #4a4436;background:#322e25;color:#b8b09a;
+    font-size:12px;padding:6px 14px;border-radius:99px;cursor:pointer;letter-spacing:.05em;
+  }
+  .tabs button.on{background:var(--pine);color:#f4f0e3;border-color:var(--pine)}
+  .caption{color:#7a7260;font-size:11px;letter-spacing:.2em;font-family:var(--mono)}
+
+  /* ── 机身 / 屏幕 ── */
+  .bezel{
+    width:848px;height:528px;padding:24px;border-radius:22px;
+    background:linear-gradient(160deg,#3a3a34,#22221e);
+    box-shadow:0 30px 80px -20px #000c, inset 0 1px 0 #ffffff14;
+  }
+  .screen{
+    width:800px;height:480px;border-radius:6px;overflow:hidden;position:relative;
+    background:radial-gradient(#ded4ba 1px,transparent 1.4px),var(--paper);
+    background-size:22px 22px;
+    display:flex;flex-direction:column;
+  }
+  .page{display:none;flex:1;flex-direction:column;min-height:0}
+  .page.on{display:flex}
+
+  /* ── 公共件 ── */
+  .hdr{
+    height:48px;flex:0 0 auto;display:flex;align-items:center;gap:10px;
+    padding:0 14px;background:var(--card);border-bottom:1px solid var(--line);position:relative;
+  }
+  .hdr .vbar{width:4px;height:20px;border-radius:2px;background:linear-gradient(var(--pine),var(--amber))}
+  .hdr .t{font-family:var(--serif);font-size:19px;font-weight:700;letter-spacing:.14em}
+  .hdr .sp{flex:1}
+  .back{
+    height:32px;padding:0 14px;border-radius:9px;border:1px solid var(--line);
+    background:var(--paper-deep);color:var(--ink);font-size:13px;cursor:pointer;
+  }
+  .pill{
+    display:inline-flex;align-items:center;gap:6px;border-radius:99px;
+    background:#fffdf6b8;border:1px solid var(--line);
+    font-size:11px;color:var(--dim);padding:4px 12px;
+  }
+  .btn{
+    border:0;border-radius:12px;cursor:pointer;font-size:15px;letter-spacing:.1em;
+    color:#F4F0E3;font-family:var(--serif);font-weight:700;
+    box-shadow:0 4px 12px -5px #2e463466, inset 0 1px 0 #ffffff26;
+    transition:transform .06s, filter .15s;
+  }
+  .btn:active{transform:translateY(1px);filter:brightness(.93)}
+  .btn.pine{background:linear-gradient(150deg,#356140,var(--pine-deep))}
+  .btn.ok{background:linear-gradient(150deg,#6aa468,#4e7f4c)}
+  .btn.amber{background:linear-gradient(150deg,var(--amber),var(--amber-deep))}
+  .btn.cinn{background:linear-gradient(150deg,#c9523f,var(--cinnabar-deep))}
+  .btn.ghost{
+    background:var(--card);color:var(--ink);border:1px solid var(--line);
+    box-shadow:0 2px 6px -3px #4a443325;font-weight:400;font-family:inherit;
+  }
+  .btn.ghost.l-pine{border-left:4px solid var(--pine)}
+  .btn.ghost.l-cinn{border-left:4px solid var(--cinnabar)}
+
+  /* 主界面 AI 深色核心卡（静态：取景框 + 辉光，无动画）*/
+  .ai-core{
+    width:392px;height:94px;border:1px solid #ce8a1e66;border-radius:14px;cursor:pointer;
+    position:relative;flex:0 0 auto;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+    background:linear-gradient(160deg,#2a3d24 0%,#16211a 65%,#101a0f 100%);
+    box-shadow:0 14px 34px -12px #14201acc, 0 0 24px -8px #ce8a1e40, inset 0 1px 0 #ffffff14;
+    transition:transform .08s, filter .15s;
+  }
+  .ai-core:active{transform:translateY(2px);filter:brightness(1.12)}
+  .corner{position:absolute;width:14px;height:14px;border:0 solid var(--amber)}
+  .corner.tl{top:-5px;left:-5px;border-top-width:2px;border-left-width:2px;border-top-left-radius:5px}
+  .corner.tr{top:-5px;right:-5px;border-top-width:2px;border-right-width:2px;border-top-right-radius:5px}
+  .corner.bl{bottom:-5px;left:-5px;border-bottom-width:2px;border-left-width:2px;border-bottom-left-radius:5px}
+  .corner.br{bottom:-5px;right:-5px;border-bottom-width:2px;border-right-width:2px;border-bottom-right-radius:5px}
+</style>
+</head>
+<body>
+
+<div class="tabs" id="tabs"></div>
+<div class="caption">TEA MACHINE UI · 800×480 · 高饱和茶韵（适配 RGB 屏）</div>
+<div class="bezel"><div class="screen">
+
+  <!-- ═══════════ 1. 主界面 ═══════════ -->
+  <div class="page" id="pg-home">
+    <!-- 壁纸层：真实背景图（wifi/bg_preview.jpg），缺失时回退渐变示意 -->
+    <div style="position:absolute;inset:0;background:
+      linear-gradient(165deg,#e9e2c9,#d4cbaa 55%,#bfbe9e);"></div>
+    <div style="position:absolute;inset:0;background-image:url('bg_preview.jpg');
+                background-size:cover;background-position:center;"></div>
+    <!-- 底部压暗渐变（提升控制带可读性；LVGL 可用垂直渐变对象实现）-->
+    <div style="position:absolute;left:0;right:0;bottom:0;height:150px;
+                background:linear-gradient(transparent, #241d12b8);"></div>
+
+    <!-- HUD 状态条（静态指示灯）-->
+    <div style="position:relative;display:flex;align-items:center;gap:8px;padding:8px 16px 0;
+                font-family:var(--mono);font-size:9px;letter-spacing:.18em;color:#4a4436">
+      <span style="display:inline-flex;align-items:center;gap:6px;background:#fffdf6b0;border:1px solid var(--line);
+                   border-radius:99px;padding:3px 10px">
+        <span style="width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 5px #5c955a"></span>
+        SYSTEM&nbsp;ONLINE</span>
+      <span style="background:#fffdf6b0;border:1px solid var(--line);border-radius:99px;padding:3px 10px">AI&nbsp;ENGINE&nbsp;·&nbsp;T3&nbsp;READY</span>
+      <div style="flex:1"></div>
+      <span style="background:#fffdf6b0;border:1px solid var(--line);border-radius:99px;padding:3px 10px">NET&nbsp;·&nbsp;192.168.1.66</span>
+    </div>
+
+    <!-- 顶部：品牌（左上竹帘区）+ QR（右上木墙区）-->
+    <div style="position:relative;display:flex;justify-content:space-between;align-items:flex-start;padding:10px 22px 0">
+      <div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="font-family:var(--serif);font-size:28px;font-weight:700;letter-spacing:.2em;
+                      background:#fffdf6e0;padding:4px 16px 6px;border-radius:12px;border:1px solid var(--line)">煮茗之芯</div>
+          <div style="width:31px;height:31px;border-radius:7px;background:linear-gradient(150deg,#c9523f,#9e3325);
+                      color:#f6efe0;display:flex;align-items:center;justify-content:center;
+                      font-family:var(--serif);font-size:15px;transform:rotate(-4deg);
+                      box-shadow:inset 0 0 0 1.5px #f6efe055">茶</div>
+        </div>
+        <div style="font-family:var(--mono);font-size:9px;letter-spacing:.3em;color:#3d382c;margin:8px 0 0 8px;
+                    background:#fffdf6a8;display:inline-block;padding:2px 8px;border-radius:99px">且将新火试新茶&nbsp;·&nbsp;AI&nbsp;TEA&nbsp;SOMMELIER</div>
+      </div>
+      <div style="text-align:center">
+        <div style="width:78px;height:78px;background:#fffdf6;border:1px solid var(--line);border-radius:10px;
+                    display:flex;align-items:center;justify-content:center;
+                    font-family:var(--mono);font-size:10px;color:var(--dim)">QR</div>
+        <div style="font-size:10px;color:#3d382c;margin-top:4px;background:#fffdf6c0;border-radius:99px;padding:2px 10px">手机扫码控制</div>
+      </div>
+    </div>
+
+    <!-- 中部留空：不遮挡背景比赛标语 -->
+
+    <!-- 底部控制带：AI 卡居中放大，次入口左右对称 -->
+    <div style="position:relative;display:flex;align-items:center;justify-content:center;gap:20px;padding:0 22px 24px;margin-top:auto">
+      <button class="btn pine" style="width:150px;height:56px;font-size:14px;flex:0 0 auto">🍵<br>直接冲泡</button>
+      <button class="ai-core">
+        <span class="corner tl"></span><span class="corner tr"></span>
+        <span class="corner bl"></span><span class="corner br"></span>
+        <span style="display:flex;align-items:center;gap:9px">
+          <span style="width:8px;height:8px;border-radius:50%;background:var(--amber);box-shadow:0 0 8px var(--amber)"></span>
+          <span style="font-family:var(--serif);font-size:21px;font-weight:700;letter-spacing:.16em;color:#F3E9C8">AI 识茶 · 一键冲泡</span>
+        </span>
+        <span style="font-family:var(--mono);font-size:9px;letter-spacing:.28em;color:#ce8a1e">SCAN&nbsp;&nbsp;·&nbsp;&nbsp;RECOGNIZE&nbsp;&nbsp;·&nbsp;&nbsp;BREW</span>
+      </button>
+      <button style="width:150px;height:56px;flex:0 0 auto;background:#fffdf6b8;border:1px solid var(--line);
+                     border-radius:12px;cursor:pointer;color:#4a4436;font-size:13px;letter-spacing:.06em">✎<br>手动录入</button>
+    </div>
+  </div>
+
+  <!-- ═══════════ 2. 选茶 ═══════════ -->
+  <div class="page" id="pg-pick">
+    <div class="hdr">
+      <div class="vbar"></div><div class="t">选茶</div>
+      <div class="sp"></div><button class="back">← 返回</button>
+    </div>
+    <div style="padding:12px 20px 0;display:flex;align-items:center;gap:10px">
+      <span style="font-size:12px;color:var(--dim);letter-spacing:.1em">浓度</span>
+      <div style="display:flex;gap:8px;flex:1">
+        <button class="lvbtn">淡</button>
+        <button class="lvbtn on">标准</button>
+        <button class="lvbtn">浓</button>
+        <button class="lvbtn">特浓</button>
+      </div>
+    </div>
+    <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:12px;padding:14px 20px 18px">
+      <div class="bincard"><div class="no">仓 1</div><div class="name">龙 井</div><div class="hint">点击冲泡 ›</div></div>
+      <div class="bincard"><div class="no">仓 2</div><div class="name">铁观音</div><div class="hint">点击冲泡 ›</div></div>
+      <div class="bincard empty"><div class="no">仓 3</div><div class="name">（空）</div><div class="hint">请先录入</div></div>
+      <div class="bincard empty"><div class="no">仓 4</div><div class="name">（空）</div><div class="hint">请先录入</div></div>
+    </div>
+  </div>
+
+  <!-- ═══════════ 3. 冲泡进度 ═══════════ -->
+  <div class="page" id="pg-brew">
+    <div class="hdr">
+      <div class="vbar"></div><div class="t">冲泡</div>
+      <div class="sp"></div><button class="back">← 返回</button>
+    </div>
+    <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:56px">
+      <!-- 圆环进度（LVGL lv_arc 可实现）-->
+      <div style="position:relative;width:220px;height:220px">
+        <svg viewBox="0 0 220 220" width="220" height="220">
+          <circle cx="110" cy="110" r="96" fill="none" stroke="#E6DDBF" stroke-width="14"/>
+          <circle cx="110" cy="110" r="96" fill="none" stroke="url(#g1)" stroke-width="14"
+                  stroke-linecap="round" stroke-dasharray="603" stroke-dashoffset="210"
+                  transform="rotate(-90 110 110)"/>
+          <defs><linearGradient id="g1" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stop-color="#2E5535"/><stop offset=".65" stop-color="#5C955A"/>
+            <stop offset="1" stop-color="#CE8A1E"/></linearGradient></defs>
+        </svg>
+        <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+          <div style="font-family:var(--mono);font-size:44px;font-weight:700;color:var(--amber)">65<span style="font-size:20px">%</span></div>
+          <div style="font-family:var(--serif);font-size:17px;letter-spacing:.2em;color:var(--ink);margin-top:2px">浸泡中</div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px;width:250px">
+        <div style="font-size:12px;color:var(--dim);letter-spacing:.1em">当前茶单</div>
+        <div style="font-family:var(--serif);font-size:24px;font-weight:700">仓 1 · 龙井</div>
+        <div style="font-size:12px;color:var(--dim)">浓度：标准 · 水量 300ml</div>
+        <button class="btn amber" style="height:56px;margin-top:10px">✔ 确认出茶（烫！）</button>
+        <button class="btn ghost l-cinn" style="height:44px;font-size:13px">取消本杯</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ 4. 录入 ═══════════ -->
+  <div class="page" id="pg-entry">
+    <div class="hdr">
+      <div class="vbar"></div><div class="t">录入茶叶</div>
+      <div class="sp"></div><button class="back">← 返回</button>
+    </div>
+    <div style="padding:12px 20px 0">
+      <div style="font-size:11px;color:var(--dim);letter-spacing:.14em;margin-bottom:8px">茶仓现状</div>
+      <div style="display:flex;gap:8px">
+        <div class="minibin"><span class="n">仓1</span><span class="v">龙井</span></div>
+        <div class="minibin"><span class="n">仓2</span><span class="v">铁观音</span></div>
+        <div class="minibin off"><span class="n">仓3</span><span class="v">空</span></div>
+        <div class="minibin off"><span class="n">仓4</span><span class="v">空</span></div>
+      </div>
+    </div>
+    <div style="padding:14px 20px 0">
+      <div style="font-size:11px;color:var(--dim);letter-spacing:.14em;margin-bottom:8px">选择录入方式</div>
+      <div style="display:flex;gap:14px">
+        <button class="modecard"><span class="ico">📷</span><span class="mt">自动识别</span><span class="md">相机拍照 · 识别茶类自动填名</span></button>
+        <button class="modecard"><span class="ico">⌨️</span><span class="mt">手动输入</span><span class="md">键盘输入茶名 · 自选仓位</span></button>
+      </div>
+    </div>
+    <div style="flex:1"></div>
+    <div style="padding:0 20px 16px;display:flex;gap:10px">
+      <button class="btn ghost l-pine" style="width:170px;height:42px;font-size:13px">🗑 重置选仓</button>
+      <button class="btn ghost l-cinn" style="width:170px;height:42px;font-size:13px">🗑 全部重置</button>
+    </div>
+  </div>
+
+  <!-- ═══════════ 5. 设置 ═══════════ -->
+  <div class="page" id="pg-set">
+    <div class="hdr">
+      <div class="vbar"></div><div class="t">设置</div>
+      <div class="sp"></div><span class="pill">↓ 下滑返回主页</span>
+    </div>
+    <div style="flex:1;display:flex;gap:12px;padding:12px 14px;min-height:0">
+      <div style="width:196px;flex:0 0 auto;background:var(--card);border:1px solid var(--line);
+                  border-radius:14px;padding:8px;display:flex;flex-direction:column;gap:5px">
+        <button class="mitem on">⚙ 初始化设备</button>
+        <button class="mitem">💧 水量</button>
+        <button class="mitem">⚖ 秤去皮</button>
+        <button class="mitem">🦾 舵机 / 调试</button>
+        <button class="mitem">📏 校准</button>
+        <button class="mitem">🌡 传感器</button>
+        <button class="mitem">🛠 开发者</button>
+        <button class="mitem">📶 WiFi</button>
+      </div>
+      <div style="flex:1;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px">
+        <div style="display:flex;align-items:center;gap:9px;margin-bottom:14px">
+          <div style="width:4px;height:18px;border-radius:2px;background:linear-gradient(var(--pine),var(--amber))"></div>
+          <div style="font-family:var(--serif);font-size:18px;font-weight:700;letter-spacing:.1em">初始化设备</div>
+        </div>
+        <button class="btn ghost l-pine" style="width:320px;height:46px;margin-bottom:10px;text-align:left;padding-left:16px">初始化温度传感器</button>
+        <div style="font-size:12px;color:var(--dim);margin:-4px 0 12px 4px">温度：<b style="color:var(--ok)">正常</b></div>
+        <button class="btn ghost l-pine" style="width:320px;height:46px;margin-bottom:10px;text-align:left;padding-left:16px">初始化称重（两个水箱）</button>
+        <div style="font-size:12px;color:var(--dim);margin:-4px 0 0 4px">烧水秤：<b style="color:var(--ok)">正常</b> · 冲泡秤：<b style="color:var(--ok)">正常</b></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ 6. 舵机控制台 ═══════════ -->
+  <div class="page" id="pg-servo">
+    <div class="hdr" style="justify-content:flex-start">
+      <div class="vbar"></div><div class="t" style="font-size:17px">舵机控制台</div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--dim);letter-spacing:.2em">16CH</div>
+      <div class="sp"></div>
+      <!-- 回中按钮放中右，避开右上 Exit 热区 -->
+      <button class="btn cinn" style="height:32px;padding:0 16px;font-size:12px;margin-right:96px">⟳ 全部回中 90°</button>
+    </div>
+    <div style="flex:1;display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:repeat(4,1fr);gap:7px;padding:10px 12px" id="svgrid"></div>
+    <div style="flex:0 0 126px;background:var(--card);border-top:2px solid var(--pine);padding:9px 16px 10px;display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;align-items:baseline;gap:10px">
+        <span style="font-size:10px;color:var(--dim);letter-spacing:.12em">SELECTED</span>
+        <span id="svname" style="font-family:var(--mono);font-size:15px;font-weight:700;color:var(--pine)">CH 1</span>
+        <button class="typebtn" id="svtype">180°</button>
+        <div style="flex:1"></div>
+        <span id="svbig" style="font-family:var(--mono);font-size:24px;font-weight:700;color:var(--amber)">90°</span>
+        <span id="svmax" style="font-family:var(--mono);font-size:11px;color:var(--dim)">/ 180°</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;flex:1">
+        <button class="adjbtn" style="border-left:4px solid var(--cinnabar)">− 1°</button>
+        <div style="flex:1;height:32px;position:relative">
+          <div style="position:absolute;left:0;right:0;top:50%;height:13px;transform:translateY(-50%);background:var(--paper-deep);border:1px solid var(--line);border-radius:99px;overflow:hidden">
+            <div style="height:100%;width:50%;background:linear-gradient(90deg,var(--pine),#5c955a 65%,var(--amber))"></div>
+          </div>
+          <div style="position:absolute;top:50%;left:50%;width:28px;height:28px;border-radius:50%;background:var(--card);border:3px solid var(--pine);transform:translate(-50%,-50%);box-shadow:0 2px 8px -2px #322f2860"></div>
+        </div>
+        <button class="adjbtn" style="border-left:4px solid var(--ok)">+ 1°</button>
+      </div>
+    </div>
+  </div>
+
+</div></div>
+
+<style>
+  /* 选茶页 */
+  .lvbtn{
+    flex:1;height:44px;border-radius:10px;border:1px solid var(--line);cursor:pointer;
+    background:var(--card);color:var(--ink);font-size:14px;letter-spacing:.1em;
+    box-shadow:0 2px 6px -3px #4a443325;
+  }
+  .lvbtn.on{background:linear-gradient(150deg,#356140,var(--pine-deep));color:#F4F0E3;border-color:transparent;font-weight:700}
+  .bincard{
+    background:var(--card);border:1px solid var(--line);border-radius:14px;cursor:pointer;
+    padding:12px 16px;display:flex;flex-direction:column;justify-content:center;gap:2px;
+    border-left:5px solid var(--pine);box-shadow:0 3px 10px -5px #4a443330;
+    transition:transform .06s;
+  }
+  .bincard:active{transform:scale(.98)}
+  .bincard .no{font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.14em}
+  .bincard .name{font-family:var(--serif);font-size:26px;font-weight:700;letter-spacing:.14em;color:var(--ink)}
+  .bincard .hint{font-size:11px;color:var(--pine);letter-spacing:.08em}
+  .bincard.empty{border-left-color:var(--line);border-style:dashed;border-left-style:solid;opacity:.75}
+  .bincard.empty .name{color:var(--dim)}
+  .bincard.empty .hint{color:var(--dim)}
+  /* 录入页 */
+  .minibin{
+    flex:1;background:var(--card);border:1px solid var(--line);border-radius:10px;
+    padding:7px 10px;display:flex;align-items:baseline;gap:8px;
+  }
+  .minibin .n{font-family:var(--mono);font-size:10px;color:var(--dim)}
+  .minibin .v{font-family:var(--serif);font-size:15px;font-weight:700;letter-spacing:.06em}
+  .minibin.off{opacity:.6}.minibin.off .v{color:var(--dim);font-weight:400}
+  .modecard{
+    flex:1;height:150px;background:var(--card);border:1px solid var(--line);border-radius:16px;
+    cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+    box-shadow:0 4px 14px -8px #4a443340;transition:transform .06s, border-color .15s;
+  }
+  .modecard:hover{border-color:var(--pine)}
+  .modecard:active{transform:scale(.98)}
+  .modecard .ico{font-size:30px}
+  .modecard .mt{font-family:var(--serif);font-size:19px;font-weight:700;letter-spacing:.16em}
+  .modecard .md{font-size:11px;color:var(--dim);letter-spacing:.05em}
+  /* 设置菜单 */
+  .mitem{
+    height:42px;border:0;border-radius:9px;background:transparent;cursor:pointer;
+    text-align:left;padding:0 12px;font-size:13px;color:var(--ink);letter-spacing:.04em;
+  }
+  .mitem.on{background:var(--pine-mist);color:var(--pine);font-weight:700;
+    box-shadow:inset 3px 0 0 var(--pine)}
+  /* 舵机 */
+  .svcell{
+    background:var(--card);border:1px solid var(--line);border-radius:10px;
+    padding:4px 9px 3px;display:flex;flex-direction:column;justify-content:space-between;
+    box-shadow:0 2px 6px -3px #4a443325;cursor:pointer;
+  }
+  .svcell.sel{background:var(--pine-mist);border-color:var(--pine);border-width:2px;padding:3px 8px 2px}
+  .svcell .top{display:flex;justify-content:space-between;align-items:center}
+  .svcell .ch{font-family:var(--mono);font-size:10px;font-weight:600;color:var(--dim)}
+  .svcell .tp{font-family:var(--mono);font-size:9px;padding:1px 6px;border-radius:99px}
+  .svcell .t180{color:var(--pine);background:var(--pine-mist)}
+  .svcell .t270{color:var(--amber);background:#ce8a1e22}
+  .svcell .ang{font-family:var(--mono);font-size:23px;font-weight:700;color:var(--amber);text-align:right;line-height:1.05}
+  .typebtn{height:24px;padding:0 10px;border-radius:8px;border:1px solid var(--pine);
+    background:var(--card);color:var(--ink);font-family:var(--mono);font-size:11px;font-weight:600;cursor:pointer}
+  .adjbtn{width:62px;height:40px;border-radius:10px;border:1px solid var(--line);
+    background:var(--paper-deep);font-family:var(--mono);font-size:13px;font-weight:600;cursor:pointer;color:var(--ink)}
+</style>
+
+<script>
+"use strict";
+const pages=[['pg-home','主界面'],['pg-pick','选茶'],['pg-brew','冲泡进度'],
+             ['pg-entry','录入'],['pg-set','设置'],['pg-servo','舵机台']];
+const tabs=document.getElementById('tabs');
+pages.forEach(([id,name],i)=>{
+  const b=document.createElement('button');
+  b.textContent=name; if(i===0)b.className='on';
+  b.onclick=()=>{
+    document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));
+    document.getElementById(id).classList.add('on');
+    document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');
+  };
+  tabs.appendChild(b);
+});
+/* 舵机网格模拟 */
+const sg=document.getElementById('svgrid');
+for(let i=0;i<16;i++){
+  const c=document.createElement('div');
+  c.className='svcell'+(i===0?' sel':'');
+  c.innerHTML=`<div class="top"><span class="ch">CH ${i+1}</span><span class="tp t180">180°</span></div><div class="ang">90°</div>`;
+  c.onclick=()=>{document.querySelectorAll('.svcell').forEach(x=>x.classList.remove('sel'));
+    c.classList.add('sel');document.getElementById('svname').textContent='CH '+(i+1);};
+  sg.appendChild(c);
+}
+</script>
+</body>
+</html>

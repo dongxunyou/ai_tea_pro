@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>舵机调试面板 · 设计稿 800×480</title>
+<style>
+  :root{
+    --serif:"Noto Serif SC","Songti SC","SimSun",serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --paper:#f4efe2; --paper-deep:#ece5d2; --card:#fffdf6;
+    --ink:#322f28; --dim:#98917d;
+    --pine:#3d5c43; --pine-mist:#dfe8da;
+    --ok:#6d8f63; --cinnabar:#b0492f; --amber:#c18a3e;
+    --line:#e3dcc5;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{
+    min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+    background:#2b2822;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+    user-select:none;
+  }
+  .caption{color:#98917d;font-size:12px;letter-spacing:.2em;font-family:var(--mono)}
+
+  /* ── 机身 ─────────────────────────── */
+  .bezel{
+    width:848px;height:528px;padding:24px;border-radius:22px;
+    background:linear-gradient(160deg,#3a3a34,#22221e);
+    box-shadow:0 30px 80px -20px #000c, inset 0 1px 0 #ffffff14;
+  }
+
+  /* ── 屏幕（= LVGL tile 800×480）────── */
+  .screen{
+    width:800px;height:480px;border-radius:6px;overflow:hidden;
+    background:
+      radial-gradient(#ddd5bf 1px, transparent 1.4px),
+      var(--paper);
+    background-size:22px 22px;
+    display:flex;flex-direction:column;
+    color:var(--ink);
+  }
+
+  /* ① 标题栏 46px */
+  .hdr{
+    height:46px;flex:0 0 auto;display:flex;align-items:center;gap:10px;
+    padding:0 14px;background:var(--card);border-bottom:1px solid var(--line);
+  }
+  .hdr .bar{width:4px;height:20px;border-radius:2px;background:linear-gradient(var(--pine),var(--amber))}
+  .hdr .t{font-family:var(--serif);font-size:18px;font-weight:700;letter-spacing:.12em}
+  .hdr .sub{font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.2em;margin-top:2px}
+  .hdr .sp{flex:1}
+  .reset{
+    height:32px;padding:0 14px;border:0;border-radius:9px;cursor:pointer;
+    font-size:13px;letter-spacing:.08em;color:#f4f0e3;
+    background:linear-gradient(150deg,#bd5340,#93392a);
+    box-shadow:0 3px 10px -4px #93392a90, inset 0 1px 0 #ffffff26;
+  }
+  .reset:active{transform:translateY(1px)}
+
+  /* ② 通道网格：4×4 */
+  .grid{
+    flex:1;display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:repeat(4,1fr);
+    gap:7px;padding:10px 12px;
+  }
+  .cell{
+    background:var(--card);border:1px solid var(--line);border-radius:10px;
+    padding:5px 9px 4px;cursor:pointer;position:relative;
+    display:flex;flex-direction:column;justify-content:space-between;
+    box-shadow:0 2px 6px -3px #4a443325;
+    transition:border-color .12s, background .12s, transform .06s;
+  }
+  .cell:active{transform:scale(.97)}
+  .cell .top{display:flex;justify-content:space-between;align-items:center}
+  .cell .ch{font-family:var(--mono);font-size:11px;font-weight:600;color:var(--dim);letter-spacing:.06em}
+  .cell .type{
+    font-family:var(--mono);font-size:9px;padding:1px 6px;border-radius:99px;letter-spacing:.03em;
+  }
+  .cell .type.t180{color:var(--pine);background:var(--pine-mist)}
+  .cell .type.t270{color:var(--amber);background:#c18a3e22}
+  .cell .ang{
+    font-family:var(--mono);font-size:26px;font-weight:700;letter-spacing:-.02em;
+    color:var(--amber);text-align:right;line-height:1.1;
+  }
+  .cell.sel{
+    background:var(--pine-mist);border-color:var(--pine);border-width:2px;padding:4px 8px 3px;
+    box-shadow:0 3px 10px -4px #3d5c4350;
+  }
+
+  /* ③ 底部控制条 128px */
+  .ctrl{
+    flex:0 0 128px;background:var(--card);border-top:2px solid var(--pine);
+    padding:10px 16px 12px;display:flex;flex-direction:column;gap:10px;
+  }
+  .info{display:flex;align-items:baseline;gap:10px}
+  .info .cap{font-size:11px;color:var(--dim);letter-spacing:.1em}
+  .info .selname{font-family:var(--mono);font-size:16px;font-weight:700;color:var(--pine)}
+  .typebtn{
+    height:26px;padding:0 10px;border-radius:8px;cursor:pointer;
+    border:1px solid var(--pine);background:var(--card);color:var(--ink);
+    font-family:var(--mono);font-size:12px;font-weight:600;
+  }
+  .typebtn.t270{border-color:var(--amber);color:#f4f0e3;background:linear-gradient(150deg,var(--amber),#a06c28)}
+  .info .sp{flex:1}
+  .info .big{font-family:var(--mono);font-size:26px;font-weight:700;color:var(--amber);letter-spacing:-.02em}
+  .info .max{font-family:var(--mono);font-size:12px;color:var(--dim)}
+
+  .sldrow{display:flex;align-items:center;gap:12px;flex:1}
+  .adj{
+    width:64px;height:42px;border-radius:10px;cursor:pointer;
+    font-family:var(--mono);font-size:14px;font-weight:600;
+    background:var(--paper-deep);border:1px solid var(--line);color:var(--ink);
+  }
+  .adj.minus{border-left:4px solid var(--cinnabar)}
+  .adj.plus{border-left:4px solid var(--ok)}
+  .adj:active{transform:translateY(1px)}
+
+  /* 滑杆（模拟 LVGL slider）*/
+  .slider{flex:1;height:34px;position:relative;cursor:pointer}
+  .slider .track{
+    position:absolute;left:0;right:0;top:50%;height:14px;transform:translateY(-50%);
+    background:var(--paper-deep);border:1px solid var(--line);border-radius:99px;overflow:hidden;
+  }
+  .slider .fill{
+    height:100%;width:50%;border-radius:99px;
+    background:linear-gradient(90deg,var(--pine),#6d8f63 65%,var(--amber));
+  }
+  .slider .knob{
+    position:absolute;top:50%;width:30px;height:30px;border-radius:50%;
+    background:var(--card);border:3px solid var(--pine);transform:translate(-50%,-50%);
+    box-shadow:0 2px 8px -2px #322f2860;
+    left:50%;
+  }
+  .ticks{display:flex;justify-content:space-between;padding:0 76px;margin-top:-4px;
+    font-family:var(--mono);font-size:9px;color:var(--dim)}
+</style>
+</head>
+<body>
+
+<div class="caption">SERVO PANEL · 800×480 设计稿（可点击交互）</div>
+<div class="bezel">
+  <div class="screen">
+
+    <!-- ① 标题栏 -->
+    <div class="hdr">
+      <div class="bar"></div>
+      <div>
+        <div class="t">舵机控制台</div>
+      </div>
+      <div class="sub">SERVO · 16CH</div>
+      <div class="sp"></div>
+      <button class="reset" onclick="resetAll()">⟳ 全部回中 90°</button>
+    </div>
+
+    <!-- ② 4×4 通道网格 -->
+    <div class="grid" id="grid"></div>
+
+    <!-- ③ 底部控制条 -->
+    <div class="ctrl">
+      <div class="info">
+        <span class="cap">SELECTED</span>
+        <span class="selname" id="selname">CH 1</span>
+        <button class="typebtn" id="typebtn" onclick="toggleType()">180°</button>
+        <div class="sp"></div>
+        <span class="big" id="bigang">90°</span>
+        <span class="max" id="maxang">/ 180°</span>
+      </div>
+      <div class="sldrow">
+        <button class="adj minus" onclick="nudge(-1)">− 1°</button>
+        <div class="slider" id="slider">
+          <div class="track"><div class="fill" id="fill"></div></div>
+          <div class="knob" id="knob"></div>
+        </div>
+        <button class="adj plus" onclick="nudge(1)">+ 1°</button>
+      </div>
+      <div class="ticks"><span>0°</span><span>90°</span><span id="tickmax">180°</span></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+"use strict";
+/* 16 通道状态（对应 g_servo_setpoint / g_servo_type） */
+const CH = Array.from({length:16},()=>({ang:90, t270:false}));
+let sel = 0;
+
+const grid = document.getElementById('grid');
+const cells = [];
+for(let i=0;i<16;i++){
+  const c = document.createElement('div');
+  c.className = 'cell' + (i===0?' sel':'');
+  c.innerHTML = `<div class="top"><span class="ch">CH ${i+1}</span><span class="type t180">180°</span></div>
+                 <div class="ang">90°</div>`;
+  c.onclick = ()=>{ sel=i; refresh(); };
+  grid.appendChild(c); cells.push(c);
+}
+
+const $ = id=>document.getElementById(id);
+
+function refresh(){
+  cells.forEach((c,i)=>{
+    const s = CH[i];
+    c.classList.toggle('sel', i===sel);
+    c.querySelector('.ang').textContent = s.ang + '°';
+    const tp = c.querySelector('.type');
+    tp.textContent = s.t270 ? '270°' : '180°';
+    tp.className = 'type ' + (s.t270 ? 't270' : 't180');
+  });
+  const s = CH[sel], max = s.t270?270:180;
+  $('selname').textContent = 'CH ' + (sel+1);
+  $('bigang').textContent = s.ang + '°';
+  $('maxang').textContent = '/ ' + max + '°';
+  $('tickmax').textContent = max + '°';
+  const tb = $('typebtn');
+  tb.textContent = s.t270 ? '270°' : '180°';
+  tb.className = 'typebtn' + (s.t270 ? ' t270' : '');
+  const pct = s.ang / max * 100;
+  $('fill').style.width = pct + '%';
+  $('knob').style.left = pct + '%';
+}
+
+function nudge(d){
+  const s = CH[sel], max = s.t270?270:180;
+  s.ang = Math.max(0, Math.min(max, s.ang + d));
+  refresh();
+}
+function toggleType(){
+  const s = CH[sel];
+  s.t270 = !s.t270;
+  if(!s.t270 && s.ang > 180) s.ang = 180;   /* 270→180 截断（同固件逻辑）*/
+  refresh();
+}
+function resetAll(){
+  CH.forEach(s=>{ s.ang = 90; });
+  refresh();
+}
+
+/* 滑杆拖动 */
+const slider = $('slider');
+let dragging = false;
+function setFromEvent(e){
+  const r = slider.getBoundingClientRect();
+  const s = CH[sel], max = s.t270?270:180;
+  const x = Math.max(0, Math.min(r.width, e.clientX - r.left));
+  s.ang = Math.round(x / r.width * max);
+  refresh();
+}
+slider.addEventListener('pointerdown', e=>{ dragging=true; slider.setPointerCapture(e.pointerId); setFromEvent(e); });
+slider.addEventListener('pointermove', e=>{ if(dragging) setFromEvent(e); });
+slider.addEventListener('pointerup',   ()=>{ dragging=false; });
+
+refresh();
+</script>
+</body>
+</html>
