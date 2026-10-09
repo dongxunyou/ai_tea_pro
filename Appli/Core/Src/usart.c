@@ -44,6 +44,15 @@
 
 extern UART_HandleTypeDef huart7;
 
+/* ============================================================
+ * 原始数据导出模式开关（干茶叶数据集采集用）
+ * ------------------------------------------------------------
+ * 置 1 时 _write() 静默丢弃一切输出 —— 因为导出期间 UART7 要被图像数据
+ * 流独占，任何日志字节混进去都会毁掉整帧。
+ * 由 ai_task.c 的取图导出模式调用 uart7_set_raw_mode() 控制。
+ * ============================================================ */
+volatile uint8_t g_uart7_raw_mode = 0U;
+
 /**
 * @brief 串口重定向
 */
@@ -51,6 +60,10 @@ int _write(int file, char *ptr, int len)
 {
     (void)file;
 #if DEBUG_UART_ENABLE
+    /* 导出模式：整口让给图像数据流，日志一律丢弃（但返回值保持连惯性） */
+    if (g_uart7_raw_mode) {
+        return len;
+    }
     /* 用有限超时而非 HAL_MAX_DELAY：串口没初始化/被占也不会把调用者永久卡死
      * （printf 也会在 IAC_IRQHandler 里被调用，不能用无限等待）。*/
     if ((ptr != NULL) && (len > 0)) {
@@ -420,6 +433,62 @@ void uart7_rx_health_check(void) {
     uart7_rx_start();
     g_rx_wdog_cnt++;
   }
+}
+
+/* ══════════════════════════════════════════════════════════════
+ * 原始数据导出模式支持（干茶叶数据集采集用，2026-09-13 添加）
+ * --------------------------------------------------------------
+ * 背景：之前调试 trajectory 证明这条路 dst 长期 header 115200；图像一帧
+ * 480x480 RGB565 = 460800 字节，115200 要 40 秒/帧。所以必须由 PC 端把
+ * 波特率拉到 CH340 能稳定跑的最高档 —— uart7_set_baud() 就是干这个的。
+ * ══════════════════════════════════════════════════════════════ */
+
+void uart7_set_raw_mode(uint8_t on) {
+  g_uart7_raw_mode = on ? 1U : 0U;
+}
+
+uint8_t uart7_get_raw_mode(void) {
+  return (uint8_t)g_uart7_raw_mode;
+}
+
+/* 裸发送：HAL_UART_Transmit 单次最多 65535 字节，这里自动分包。
+ * 返回 0=全部成功，<0=中途失败（超时或错误）。 */
+int uart7_raw_write(const uint8_t *buf, uint32_t len, uint32_t timeout_ms) {
+  if (buf == NULL) return -1;
+  while (len > 0U) {
+    uint16_t chunk = (len > 65535U) ? 65535U : (uint16_t)len;
+    if (HAL_UART_Transmit(&huart7, (uint8_t *)buf, chunk, timeout_ms) != HAL_OK) {
+      return -1;
+    }
+    buf += chunk;
+    len -= chunk;
+  }
+  return 0;
+}
+
+/* 运行时切换波特率。
+ * 流程：停 RX DMA → 改 BRR → 重配置 FIFO（三项必须与 MX_UART7_UART_Init
+ * 保持一致）→ 重新 arm RX DMA。
+ * ★ 失败时 UART7 处在"时钟开着但参数未定"的中间态，调用方应按错误恢复。 */
+int uart7_set_baud(uint32_t baud) {
+  if (baud == 0U) return -1;
+
+  /* ★ 先停掉进行中的 RX —— 但【不用】HAL_UART_AbortReceive。
+   * 该函数要走 DMA abort 流程，高波特率下存在卡死风险，而高波特率恰恰最容易
+   * 触发帧错误 → 越想自愈越容易把 UART 搞死（实测板端反复卡死即源于此）。
+   * 这里改为直接清 UE 位让硬件停机，再重新初始化，行为确定且不会阻塞。 */
+  CLEAR_BIT(huart7.Instance->CR1, USART_CR1_UE);
+  huart7.RxState = HAL_UART_STATE_READY;
+  huart7.RxXferCount = 0U;
+
+  huart7.Init.BaudRate = baud;
+  if (HAL_UART_Init(&huart7) != HAL_OK)                                  { return -2; }
+  if (HAL_UARTEx_SetTxFifoThreshold(&huart7, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK) { return -3; }
+  if (HAL_UARTEx_SetRxFifoThreshold(&huart7, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK) { return -4; }
+  if (HAL_UARTEx_DisableFifoMode(&huart7) != HAL_OK)                     { return -5; }
+
+  uart7_rx_start();      /* 重新 arm，否则切换后 RX 永久死 */
+  return 0;
 }
 
 /* USER CODE END 1 */

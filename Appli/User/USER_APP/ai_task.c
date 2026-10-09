@@ -19,11 +19,13 @@
 #include "main.h"            /* CMSIS/HAL：SCB_*、类型 */
 #include "cmsis_os2.h"
 #include "ov5640_dcmipp.h"  /* CAM_W / CAM_H / cam_read_buf / g_cam_frame_ready */
+#include "usart.h"          /* huart7 / uart7_rx_pop / uart7_raw_write / uart7_set_baud */
 #include "FreeRTOS.h"
 #include "task.h"
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>         /* strtoul：波特率命令解析 */
 #include <string.h>
 #include <setjmp.h>          /* BusFault 捕获用 */
 
@@ -99,6 +101,28 @@ static osEventFlagsId_t s_evt_id = NULL;
 
 /* NPU 输入缓冲：256*256*3 = 196608 字节。放静态区，别放栈上。 */
 static uint8_t s_net_input[NET_W * NET_H * NET_C];
+
+/* ============================================================
+ * 取图导出快照缓冲（干茶叶数据集采集用）
+ * ------------------------------------------------------------
+ * ★ 为什么必须先快照而不是边采边发：
+ *   摄像头是硬件双缓冲，每帧完成回调就会切换 cam_read_buf。而导出一帧
+ *   480x480 RGB565 = 460800 字节，在 921600 下要传约 5 秒，期间会翻过
+ *   上百帧 —— 直接对着 cam_read_buf 发，必然读到半新半旧的撕裂画面。
+ *   所以：先把一帧完整拷进快照缓冲，再从容地慢慢发送。
+ *
+ * ★ 为什么这里不用 ov5640_dcmipp_stop()/start() 代替快照：
+ *   停在摄像头会冻结 LVGL 预览 5 秒，而且要重走 DoubleBuffer 状态机；
+ *   快照方案完全不碰相机状态机，风险更低。
+ *
+ * ★ 必须放 .EXTRAM：内部 SRAM 放不下 460KB；外部 hyperRAM 有 32MB。
+ *   该段是 NOLOAD，不会撑大固件体积。
+ * ============================================================ */
+#define EXPORT_SIDE       (((CAM_W) < (CAM_H)) ? (CAM_W) : (CAM_H))   /* 480 */
+#define EXPORT_ROW_BYTES  (EXPORT_SIDE * 2U)                          /*  960 */
+#define EXPORT_PAYLOAD    (EXPORT_ROW_BYTES * EXPORT_SIDE)            /* 460800 */
+static uint8_t s_export_buf[EXPORT_PAYLOAD]
+    __attribute__((aligned(32))) __attribute__((section(".EXTRAM")));
 
 /* 标记 NPU 是否初始化成功 */
 static uint8_t s_npu_ready = 0U;
@@ -354,6 +378,286 @@ static void run_npu_infer(void)
     }
 }
 
+/* ============================================================
+ *                取图导出模式（干茶叶数据集采集）
+ * ------------------------------------------------------------
+ *   为什么需要它：模型要在 -NPU 上跑，训练数据就必须来自同一颗 OV5640、
+ *   同一路 RGB565、同一种取景。用手机拍 → 部署到板端，色彩/锐化/畸变全
+ *   不同，精度必崩。所以数据集只能由板端自己出图。
+ *
+ *   图像帧协议（MCU → PC）
+ *     [0..3]    magic = 'T','F','R','M'
+ *     [4..5]    u16 width       (LE)
+ *     [6..7]    u16 height      (LE)
+ *     [8]       u8  bpp         = 16 (RGB565)
+ *     [9]       u8  flags       = 0
+ *     [10..13]  u32 payload_len (LE)
+ *     [...]     payload: height 行 × width*2 字节，行优先 RGB565
+ *     [末尾]    u32 crc32(payload) (LE)
+ *     最后紧跟一行 "#CAP OK\r\n"
+ *
+ *   命令协议（PC → MCU，ASCII 行，\r 或 \n 结尾）
+ *     SETBAUD=<rate>  切波特率（★ 静默：成功后一个字节都不回）
+ *     CAP             抓取并导出一帧
+ *     RESTORE         回退基准波特率（★ 静默）
+ *     PING            回 "#PONG\r\n"
+ *
+ *   ★★ 为什么 SETBAUD / RESTORE 必须静默：
+ *      切波特率后 TX 立刻变成新速率，而 PC 此刻很可能还停在旧速率上 ——
+ *      MCU 任何主动回包都必然被 PC 收成乱码丢掉。约定：切换类命令一律
+ *      不回包，链路是否真的通，由 PC 切完之后补一个 PING 来确认。这样
+ *      就不存在"MCU 回得早还是 PC 切得快"的竞态。
+ *
+ *   ★ 导出期间 UART7 进入 raw mode，printf 全静音 —— 一个日志字节混进
+ *     图像流就是一整帧报废。
+ *   ★ 切到非基准波特率后启动空闲自动回退，杜绝"板子卡在高速率上失联"。
+ * ============================================================ */
+
+#ifndef EXPORT_BASE_BAUD
+#define EXPORT_BASE_BAUD  115200U   /* 需与 usart.c 的 DEBUG_UART_BAUD 保持一致 */
+#endif
+/* 高速波特率下空闲多久自动回退基准速率（毫秒） */
+#ifndef EXPORT_BAUD_REVERT_MS
+#define EXPORT_BAUD_REVERT_MS  8000U
+#endif
+
+typedef struct {
+    uint8_t  magic[4];
+    uint16_t width;
+    uint16_t height;
+    uint8_t  bpp;
+    uint8_t  flags;
+    uint32_t payload_len;
+} __attribute__((packed)) export_hdr_t;
+
+static uint32_t s_base_baud      = EXPORT_BASE_BAUD;
+static uint32_t s_baud_revert_ms = 0U;      /* 0 = 未启用自动回退 */
+
+/* 逐字节 CRC32（IEEE 802.3，poly 0xEDB88320）。
+ * 刻意不用 1KB 查表：省 flash；460KB 算完约几十毫秒，远小于串口传输耗时。 */
+static uint32_t crc32_update(uint32_t crc, const uint8_t *p, uint32_t len)
+{
+    for (uint32_t i = 0U; i < len; i++) {
+        crc ^= p[i];
+        for (int k = 0; k < 8; k++) {
+            crc = (crc & 1U) ? ((crc >> 1U) ^ 0xEDB88320U) : (crc >> 1U);
+        }
+    }
+    return crc;
+}
+
+static void export_reply(const char *s)
+{
+    (void)uart7_raw_write((const uint8_t *)s, (uint32_t)strlen(s), 200U);
+}
+
+/* ══════════════════════════════════════════════════════════════
+ * 分块传输（推荐方式；CAP 整帧模式保留作对照/退路）
+ * --------------------------------------------------------------
+ * 为什么不再"整帧 460KB 一次传"：
+ *   · 921600 下连续阻塞 5 秒、115200 下 40 秒，窗口期间完全无响应；
+ *   · 只要丢 1 个字节，整帧 460KB 全部作废；
+ *   · 一旦失败，根本无从判断卡在哪一步。
+ * 分块之后：每块 8KB（921600 下约 89ms），失败只重传那一块；
+ *   且 SNAP / BLK 每一步都有明确响应，出问题一眼能定位。
+ * ══════════════════════════════════════════════════════════════ */
+/* 块大小是实测出来的，不是算出来的：
+ *   8192  字节 → 57 块 → 单帧 15.15s   ← 最快
+ *   32768 字节 → 15 块 → 单帧 21.79s
+ * 原本以为瓶颈是往返次数，放大块反而更慢，说明真正的瓶颈在别处
+ * （高波特率下吞吐不升反降，怀疑与 CH340 的 USB 批量传输行为有关）。
+ * 所以取实测最优值 8192。 */
+#define EXPORT_CHUNK  8192U
+#define EXPORT_NBLK   ((EXPORT_PAYLOAD + EXPORT_CHUNK - 1U) / EXPORT_CHUNK)  /* 57 */
+
+typedef struct {
+    uint8_t  magic[4];      /* 'T','B','L','K' */
+    uint32_t idx;
+    uint32_t len;
+} __attribute__((packed)) blk_hdr_t;
+
+static int s_snap_valid = 0;
+
+/* 抓一帧进快照缓冲（只抓取，不发送）。 */
+static int export_snapshot(void)
+{
+    const uint32_t side = (uint32_t)EXPORT_SIDE;
+    const uint32_t x0   = ((uint32_t)CAM_W - side) / 2U;
+    const uint32_t y0   = ((uint32_t)CAM_H - side) / 2U;
+
+    /* ★ 分步诊断：这几行 printf 是定位"板端卡死"的唯一手段，不要删。
+     *   抓帧阶段故意【不】开 raw 静音 —— 一旦卡在下面某一步，串口上
+     *   最后打印出来的那一行就精确指出了卡在哪里。 */
+    uint32_t t0 = HAL_GetTick();
+
+    (void)wait_fresh_frame(200U);
+    printf("[EXP] snap: wait=%lums\r\n", (unsigned long)(HAL_GetTick() - t0));
+
+    /* DCMIPP 是 DMA 写外部 RAM，MPU 又是 Write-Through —— CPU 侧可能留着
+     * 陈旧 cache 行，务必先 invalidate 再拷，否则会导出上一帧的残留。 */
+    uint8_t *src = (uint8_t *)cam_read_buf;
+    SCB_InvalidateDCache_by_Addr((uint32_t *)src, (int32_t)CAM_BUF_SIZE);
+    printf("[EXP] snap: inv=%lums\r\n", (unsigned long)(HAL_GetTick() - t0));
+
+    for (uint32_t y = 0U; y < side; y++) {
+        const uint8_t *s = src + (uint32_t)((y0 + y) * CAM_STRIDE) + (x0 * 2U);
+        memcpy(&s_export_buf[y * EXPORT_ROW_BYTES], s, EXPORT_ROW_BYTES);
+    }
+    printf("[EXP] snap: copy_done=%lums\r\n", (unsigned long)(HAL_GetTick() - t0));
+
+    s_snap_valid = 1;
+    return 0;
+}
+
+/* 发送第 idx 块：块头(12) + 数据(<=8192) + CRC32(4) */
+static void export_send_block(uint32_t idx)
+{
+    if ((!s_snap_valid) || (idx >= (uint32_t)EXPORT_NBLK)) { return; }
+
+    uint32_t off = idx * EXPORT_CHUNK;
+    uint32_t len = EXPORT_CHUNK;
+    if ((off + len) > (uint32_t)EXPORT_PAYLOAD) {
+        len = (uint32_t)EXPORT_PAYLOAD - off;
+    }
+
+    blk_hdr_t bh;
+    bh.magic[0] = 'T'; bh.magic[1] = 'B'; bh.magic[2] = 'L'; bh.magic[3] = 'K';
+    bh.idx = idx;
+    bh.len = len;
+
+    if (uart7_raw_write((const uint8_t *)&bh, (uint32_t)sizeof(bh), 500U) != 0) { return; }
+    if (uart7_raw_write(&s_export_buf[off], len, 3000U) != 0) { return; }
+
+    uint32_t crc = crc32_update(0xFFFFFFFFU, &s_export_buf[off], len) ^ 0xFFFFFFFFU;
+    (void)uart7_raw_write((const uint8_t *)&crc, 4U, 500U);
+}
+
+/* 整帧模式（保留）：一次把 460KB 全发出去 */
+static void export_do_capture(void)
+{
+    const uint32_t side = (uint32_t)EXPORT_SIDE;
+
+    if (export_snapshot() != 0) { export_reply("#CAP ERR snap\r\n"); return; }
+
+    export_hdr_t hdr;
+    hdr.magic[0] = 'T'; hdr.magic[1] = 'F'; hdr.magic[2] = 'R'; hdr.magic[3] = 'M';
+    hdr.width       = (uint16_t)side;
+    hdr.height      = (uint16_t)side;
+    hdr.bpp         = 16U;
+    hdr.flags       = 0U;
+    hdr.payload_len = (uint32_t)EXPORT_PAYLOAD;
+
+    if (uart7_raw_write((const uint8_t *)&hdr, (uint32_t)sizeof(hdr), 200U) != 0) {
+        export_reply("#CAP ERR head\r\n"); return;
+    }
+
+    uint32_t crc = 0xFFFFFFFFU;
+    uint32_t off = 0U;
+    for (uint32_t y = 0U; y < side; y++) {
+        if (uart7_raw_write(&s_export_buf[off], EXPORT_ROW_BYTES, 200U) != 0) {
+            export_reply("#CAP ERR data\r\n"); return;
+        }
+        crc = crc32_update(crc, &s_export_buf[off], EXPORT_ROW_BYTES);
+        off += EXPORT_ROW_BYTES;
+        /* 每 16 行让出一次 CPU，避免 LVGL 长时间得不到调度。
+         * 代价约 30 次 1ms tick，相对 5 秒传输可忽略。 */
+        if ((y & 15U) == 15U) { osDelay(1); }
+    }
+
+    uint32_t out = crc ^ 0xFFFFFFFFU;
+    if (uart7_raw_write((const uint8_t *)&out, 4U, 200U) != 0) {
+        export_reply("#CAP ERR crc\r\n"); return;
+    }
+    export_reply("#CAP OK\r\n");
+}
+
+static char   s_cmd_line[64];
+static uint8_t s_cmd_len = 0U;
+
+static void export_handle_line(char *line)
+{
+    size_t n = strlen(line);
+    while ((n > 0U) && ((line[n - 1U] == '\r') || (line[n - 1U] == '\n'))) {
+        line[--n] = '\0';
+    }
+    if (n == 0U) { return; }
+
+    if (strncmp(line, "SETBAUD=", 8U) == 0) {
+        uint32_t baud = (uint32_t)strtoul(&line[8], NULL, 10);
+        if (baud == 0U) { return; }
+        /* ★ 静默切换：成功后不回任何东西，由 PC 补 PING 确认链路 */
+        (void)uart7_set_baud(baud);
+        /* raw mode 必须在首次 SETBAUD 就开：高速率下有 printf 漏出就是这个下场 */
+        uart7_set_raw_mode(1U);
+        s_baud_revert_ms = HAL_GetTick() + EXPORT_BAUD_REVERT_MS;
+
+    } else if (strcmp(line, "CAP") == 0) {
+        uart7_set_raw_mode(1U);
+        s_baud_revert_ms = HAL_GetTick() + EXPORT_BAUD_REVERT_MS;
+        export_do_capture();
+
+    } else if (strcmp(line, "SNAP") == 0) {
+        /* ★ 抓帧阶段【不】静音 printf：卡在 wait/cache/memcpy 任意一步时，
+         * 串口还能看到 [EXP] snap: 诊断行，不至于变成黑盒。
+         * 抓完帧、准备吐数据了才静音。 */
+        s_baud_revert_ms = HAL_GetTick() + EXPORT_BAUD_REVERT_MS;
+        if (export_snapshot() == 0) {
+            uart7_set_raw_mode(1U);
+            export_reply("#SNAP OK\r\n");
+        } else {
+            export_reply("#SNAP ERR\r\n");
+        }
+
+    } else if (strncmp(line, "BLK=", 4U) == 0) {
+        uint32_t idx = (uint32_t)strtoul(&line[4], NULL, 10);
+        s_baud_revert_ms = HAL_GetTick() + EXPORT_BAUD_REVERT_MS;
+        export_send_block(idx);
+
+    } else if (strcmp(line, "RESTORE") == 0) {
+        /* ★ 同样静默：切完后 PC 会回到基准波特率自己 PING */
+        if (huart7.Init.BaudRate != s_base_baud) { (void)uart7_set_baud(s_base_baud); }
+        s_baud_revert_ms = 0U;
+        uart7_set_raw_mode(0U);
+
+    } else if (strcmp(line, "PING") == 0) {
+        export_reply("#PONG\r\n");
+    }
+}
+
+/* 主循环必须周期调用：①喂入串口字节并处理整行 ②波特率空闲自动回退 */
+static void export_poll(void)
+{
+    /* RX 自愈：串口出过 ORE/FE/NE 错误后 DMA 会卡死、IDLE 回调不再触发，
+     * 之后就再也收不到任何命令。
+     * ★ 但只在【非导出会话】时执行：health_check 内部会走 UART/DMA abort 流程，
+     *   高波特率下有卡死风险；而高波特率恰恰最容易出帧错误，等于一错就死。
+     *   空闲态（115200）出错概率极低，放在那里自愈即可。 */
+    if (!uart7_get_raw_mode()) {
+        uart7_rx_health_check();
+    }
+
+    uint8_t b;
+    while (uart7_rx_pop(&b)) {
+        if ((b == '\r') || (b == '\n')) {
+            s_cmd_line[s_cmd_len] = '\0';
+            if (s_cmd_len > 0U) { export_handle_line(s_cmd_line); }
+            s_cmd_len = 0U;
+        } else if (s_cmd_len < (sizeof(s_cmd_line) - 1U)) {
+            s_cmd_line[s_cmd_len++] = (char)b;
+        } else {
+            s_cmd_len = 0U;    /* 超长即丢弃，防止一行永远不结束而卡死解析器 */
+        }
+    }
+
+    if (s_baud_revert_ms != 0U) {
+        if ((int32_t)(HAL_GetTick() - s_baud_revert_ms) >= 0) {
+            if (huart7.Init.BaudRate != s_base_baud) { (void)uart7_set_baud(s_base_baud); }
+            s_baud_revert_ms = 0U;
+            uart7_set_raw_mode(0U);
+        }
+    }
+}
+
 /* ------------------------------------------------------------
  * 外部触发（线程安全，可在任意上下文调用）——接口保持不变
  * ------------------------------------------------------------ */
@@ -371,6 +675,10 @@ void ai_task(void *arg)
 {
     (void)arg;
     ai_task_handle = xTaskGetCurrentTaskHandle();
+
+    /* 记录上电时的波特率作为"基准速率"（= usart.c 的 DEBUG_UART_BAUD）。
+     * 导出会话结束后回到它，避免把 115200 写死两处而失配。 */
+    s_base_baud = huart7.Init.BaudRate;
 
     s_evt_id = osEventFlagsNew(NULL);
     configASSERT(s_evt_id != NULL);
@@ -414,7 +722,19 @@ void ai_task(void *arg)
     }
 
     for (;;) {
-        osEventFlagsWait(s_evt_id, EVT_REQ, osFlagsWaitAny, osWaitForever);
-        run_npu_infer();
+        /* 取图导出：非阻塞喂入串口字节并处理整行命令，到期自动回退波特率。
+         * 放在推理之前，保证采集会话期间命令响应优先。 */
+        export_poll();
+
+        /* 推理请求：这里刻意用超时而不是 osWaitForever ——
+         * 永久阻塞会让串口命令完全收不到，导出会话就再也无法结束。
+         * ★ 导出会话期间收紧到 1ms：每块命令的响应延迟直接乘以块数进
+         *   入总耗时（15 块 × 平均 5ms 就是 75ms，虽不大但白捡）。 */
+        uint32_t wait_ms = (s_baud_revert_ms != 0U) ? 1U : 10U;
+        uint32_t flags = osEventFlagsWait(s_evt_id, EVT_REQ,
+                                          osFlagsWaitAny, wait_ms);
+        if ((flags & osFlagsError) == 0U) {
+            run_npu_infer();
+        }
     }
 }

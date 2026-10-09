@@ -242,6 +242,11 @@ MPU_Config();  /* 必须在 Cache 初始化之前 */
   MX_USART3_UART_Init();
   MX_UART7_UART_Init();
   MX_UART7_RX_DMA_Init();
+  /* ★ 必须补上：MX_UART7_RX_DMA_Init() 只配置了 DMA 句柄和 NVIC，真正让接收跑起来
+   *   的是 uart7_rx_start()（内部 arm HAL_UARTEx_ReceiveToIdle_DMA）。
+   *   以前 UART7 只给 printf 用（只发不收），缺这一步无所谓；现在取图导出模式要靠
+   *   uart7_rx_pop() 收 PC 命令，不 arm 就永远收不到一个字节。 */
+  uart7_rx_start();
   MX_RAMCFG_Init();
  
   
