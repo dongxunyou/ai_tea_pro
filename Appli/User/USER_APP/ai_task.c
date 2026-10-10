@@ -608,6 +608,28 @@ static void export_handle_line(char *line)
             export_reply("#SNAP ERR\r\n");
         }
 
+    } else if (strcmp(line, "DUMP") == 0) {
+        /* Stream mode: grab one frame, then blast all blocks back-to-back in a
+         * single continuous stream (only 1 request/response round trip).
+         * Faster and more stable than the SNAP+BLK chunked handshake.
+         * Snapshot diagnostics print BEFORE raw mode is armed; once streaming
+         * starts, UART7 is raw so no log byte can corrupt the image. */
+        uint32_t t0 = HAL_GetTick();
+        s_baud_revert_ms = HAL_GetTick() + EXPORT_BAUD_REVERT_MS;
+        if (export_snapshot() != 0) {
+            export_reply("#DUMP ERR snap\r\n");
+            return;
+        }
+        uart7_set_raw_mode(1U);
+        for (uint32_t i = 0U; i < (uint32_t)EXPORT_NBLK; i++) {
+            export_send_block(i);
+        }
+        char tail[32];
+        (void)snprintf(tail, sizeof(tail), "#DUMP OK t=%lu\r\n",
+                       (unsigned long)(HAL_GetTick() - t0));
+        export_reply(tail);
+        s_baud_revert_ms = HAL_GetTick() + EXPORT_BAUD_REVERT_MS;
+
     } else if (strncmp(line, "BLK=", 4U) == 0) {
         uint32_t idx = (uint32_t)strtoul(&line[4], NULL, 10);
         s_baud_revert_ms = HAL_GetTick() + EXPORT_BAUD_REVERT_MS;
