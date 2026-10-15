@@ -1,17 +1,20 @@
 /* ============================================================
- * ai_task.c — 茶叶包装检测（NPU / Neural-ART 推理版）
+ * ai_task.c — 茶叶四分类（红茶/绿茶/青柑普洱/非茶，NPU / Neural-ART 版）
  * ------------------------------------------------------------
  *   流程：
  *     1) 摄像头当前帧 (cam_read_buf, 800x480 RGB565)
- *     2) 中心裁剪 480x480 → 缩放 256x256 → RGB888 → NCHW uint8
+ *     2) 中心裁剪 480x480 → 直接缩放 320x320 → RGB888 → NCHW uint8
+ *        （与训练/量化一致：center-square-crop + resize，无 letterbox）
  *     3) 调 ai_model_run() 跑 NPU 推理（权重在 octoFlash 0x70A00000）
- *     4) YOLO 输出 float32 chfirst [9][1344] (cx,cy,w,h,cls4~8)，取最高分类框
- *     5) 填同一个 g_t3_result（class_name + confidence），GUI 照常显示
+ *        ai_model_run 内部完成 INT8 量化输入转换与 logits 反量化
+ *     4) 5 帧推理的 logits 求平均（时间平滑）→ argmax 决策
+ *        （温度不参与决策，分类结果稳定）
+ *     5) 显示置信度 = softmax(logits / T[top类]) 类条件温度校准
+ *        → 拒识兜底 → 填 g_t3_result
+ *        第 4 类 unknown = "非茶"（界面只显示"未识别"，置信度 0）
+ *        （分类任务无检测框，box_valid 恒 0）
  *
  *   对接保持不变：g_t3_result / g_t3_result_ready / ai_task_trigger_infer()
- *
- *   本版改动：仅 run_npu_infer() 内——给推理调用也加上 fault 保护 +
- *             分步打印，使"点识别崩溃/卡死"时能回收到 GUI 并留下串口线索。
  * ============================================================ */
 
 #include "ai_task.h"
@@ -28,6 +31,7 @@
 #include <stdlib.h>         /* strtoul：波特率命令解析 */
 #include <string.h>
 #include <setjmp.h>          /* BusFault 捕获用 */
+#include <math.h>            /* expf：softmax */
 
 /* ------------------------------------------------------------
  * 这两个计数器原是给一个手写 CDNN0_IRQHandler 用的；现在 NPU 完成中断的
@@ -50,12 +54,12 @@ volatile uint8_t g_t3_result_ready = 0U;
  * ============================================================ */
 #define CAM_STRIDE        (CAM_W * 2U)   /* RGB565 每行字节数 = 800*2 = 1600 */
 
-/* 模型输入尺寸（来自 ai_model.h：256x256x3） */
-#define NET_W   AI_INPUT_WIDTH     /* 256 */
-#define NET_H   AI_INPUT_HEIGHT    /* 256 */
+/* 模型输入尺寸（来自 ai_model.h：320x320x3） */
+#define NET_W   AI_INPUT_WIDTH     /* 320 */
+#define NET_H   AI_INPUT_HEIGHT    /* 320 */
 #define NET_C   AI_INPUT_CHANNELS  /* 3   */
 
-/* 通道顺序开关：0 = RGB（默认，先这样试）；若红蓝判反 / 结果乱，改成 1 = BGR */
+/* 通道顺序开关：0 = RGB（与训练一致）；若红蓝判反 / 结果乱，改成 1 = BGR */
 #define INPUT_BGR   0
 
 /* 任务#31：R/B 平面对调实验开关。=1 时 plane0 写 B、plane2 写 R（G 不动） */
@@ -65,28 +69,38 @@ volatile uint8_t g_t3_result_ready = 0U;
 /* SWAP_RB 修正"从像素里取出的 R/B"，INPUT_BGR 修正"喂给网络的通道序" */
 #define SWAP_RB     0
 
-/* 检测判定阈值：最高框 score（反量化后）≥ 此值 → 判定检测到包装。
- * ★ 这个值现在是占位，烧完权重后看串口打印的实际 score 再调 ★ */
-#define DET_SCORE_THRESH   0.35f   /* #61: 降到0.35，让英红/菊花过阈值线 */
+/* 类条件温度标定（class-wise temperature calibration）
+ * ------------------------------------------------------------
+ * 依据：4 类模型验证集 logits margin（top1-top2）分布差异大：
+ *   black p5=11.3 / green p5=3.9（最易混）/ puer p5=6.0
+ * 单一温度无法兼顾：T 小 → 黑茶全 99%+ 显虚；T 大 → 绿茶低至 58%。
+ * 方案：分类决策仍用原始 logits（argmax 不受温度影响，分类结果稳定）；
+ *       显示置信度 = softmax(logits / T[top类]) 中的 top 概率。
+ * 校准目标：三类茶 p5 ≥ 93%、典型 95~99%（不虚高、有区分度）。
+ * 若板端实拍（尤其绿茶）仍偏低，按实拍 logits 继续调这三个值即可。 */
+static const float AI_TEMP_PER_CLASS[AI_NUM_CLASSES] = {
+    4.4f,   /* [0] black   */
+    1.5f,   /* [1] green   */
+    2.3f,   /* [2] puer    */
+    3.0f    /* [3] unknown（界面显示恒 0，此值仅用于日志换算） */
+};
 
-/* #63 招A+B: 类别增益 + 分类别阈值
- *  增益：cls0黑茶=1.0  cls1绿茶=1.0  cls2菊花=1.25  cls3英红=1.20  cls4青柑=1.0
- *  阈值：稳定类0.50，边界类菊花0.30/英红0.32                            */
-static const float CLS_GAIN[5]   = { 1.00f, 1.00f, 1.25f, 1.20f, 1.00f };
-static const float CLS_THRESH[5] = { 0.50f, 0.50f, 0.30f, 0.32f, 0.50f };
+/* 拒识阈值：5 帧平均概率低于此值 → 显示"未识别"
+ * （数据集无 unknown 负类，阈值仅兜底低质量输入；0.50 为保守值，
+ *   正常茶样本概率远高于此，不会误伤） */
+#define AI_REJECT_THRESH  0.50f
 
 /* FIX-2: 每次按键突发投票参数（可调） */
 #define BURST_N    5     /* 每次按键跑几帧 */
-#define BURST_MIN  3     /* 突发内某类至少多少票才认定 */
+#define BURST_MIN  3     /* 突发内成功帧数至少多少才认定 */
 extern volatile uint32_t g_cam_frame_count;  /* FIX-3: DCMIPP 回调维护 */
 
-/* 5 类检测标签 */
+/* 4 类分类标签（必须与训练类顺序一致：[0]black [1]green [2]puer [3]unknown） */
 static const char * const g_class_names[AI_NUM_CLASSES] = {
-    "black_tea",               /* ch4 */
-    "green_tea",               /* ch5 */
-    "chrysanthemum_tea",       /* ch6 */
-    "yinghong_black_tea",      /* ch7 */
-    "green_tangerine_puer_tea" /* ch8 */
+    "红茶",      /* [0] black   */
+    "绿茶",      /* [1] green   */
+    "青柑普洱",  /* [2] puer    */
+    "未识别"     /* [3] unknown：非茶 */
 };
 #define CLASS_NONE       "---"
 
@@ -185,7 +199,9 @@ static void ai_init_watchdog(void *arg)
 }
 
 /* ------------------------------------------------------------
- * 预处理：cam_read_buf (800x480 RGB565) → s_net_input (256x256x3 NCHW uint8)
+ * 预处理：cam_read_buf (800x480 RGB565) → s_net_input (320x320x3 NCHW uint8)
+ * 几何处理 = center-square-crop(480x480) + 直接缩放(320)，与训练一致；
+ * pixel→int8 量化转换在 ai_model_run 内部完成（本函数只产出 uint8 像素）
  * ------------------------------------------------------------ */
 static void preprocess_frame(const uint8_t *frame)
 {
@@ -237,45 +253,26 @@ static void preprocess_frame(const uint8_t *frame)
 }
 
 /* ------------------------------------------------------------
- * 后处理：YOLO 输出 float32 chfirst [9,1344]，找最高分框+类
- * chfirst 布局：ch0=cx  ch1=cy  ch2=w  ch3=h  ch4~8=5 类 confidence
+ * 显示置信度：softmax(logits / T[top]) 中的 top 概率
+ * 决策（argmax）不在这里做——温度永不参与分类，只校准显示。
  * ------------------------------------------------------------ */
-static int postprocess(const float *out, float *best_score_out,
-                       uint32_t *best_idx_out, uint32_t *best_cls_out)
+static float softmax_top_conf(const float *logits, uint32_t top, float T)
 {
-    const uint32_t N = AI_NUM_DETECTIONS;
+    float z[AI_NUM_CLASSES];
+    float zmax = -1.0e30f;
 
-    float    best_score = -1.0f;
-    uint32_t best_idx   = 0U;
-    uint32_t best_cls   = 0U;
-    uint32_t n_active   = 0U;
-
-    for (uint32_t i = 0U; i < N; i++) {
-        float cls_score  = -1.0f;
-        uint32_t cls_id  = 0U;
-        for (uint32_t c = 0U; c < AI_NUM_CLASSES; c++) {
-            float v = out[(4U + c) * N + i] * CLS_GAIN[c];   /* #63 乘增益 */
-            if (v > cls_score) { cls_score = v; cls_id = c; }
-        }
-        if (cls_score > 0.10f) n_active++;
-        if (cls_score > best_score) {
-            best_score = cls_score; best_idx = i; best_cls = cls_id;
-        }
+    for (int i = 0; i < AI_NUM_CLASSES; i++) {
+        z[i] = logits[i] / T;
+        if (z[i] > zmax) { zmax = z[i]; }     /* 减 max 防 exp 溢出 */
     }
-
-    float cx = out[0U*N + best_idx], cy = out[1U*N + best_idx];
-    float w  = out[2U*N + best_idx],  h = out[3U*N + best_idx];
-    printf("[DET] top=%s score_g=%.4f raw=%.4f thr=%.2f n_active=%lu box(%.1f,%.1f,%.1f,%.1f)\r\n",
-           g_class_names[best_cls], (double)best_score,
-           (double)(best_score / CLS_GAIN[best_cls]),
-           (double)CLS_THRESH[best_cls], (unsigned long)n_active,
-           (double)cx, (double)cy, (double)w, (double)h);
-
-    if (best_score_out) *best_score_out = best_score;
-    if (best_idx_out)   *best_idx_out   = best_idx;
-    if (best_cls_out)   *best_cls_out   = best_cls;
-
-    return (best_score > CLS_THRESH[best_cls]) ? 1 : 0;
+    float sum = 0.0f;
+    float etop = 0.0f;
+    for (int i = 0; i < AI_NUM_CLASSES; i++) {
+        float e = expf(z[i] - zmax);
+        sum += e;
+        if ((uint32_t)i == top) { etop = e; }
+    }
+    return etop / sum;
 }
 
 /* 小工具：填"未检测到"结果 */
@@ -288,7 +285,9 @@ static void fill_none_result(float conf)
     g_t3_result_ready = 1U;
 }
 
-/* FIX-2: 单次按键突发投票 —— 独立完成 K 帧推理+多数表决，不继承历史 */
+/* FIX-2: 单次按键突发 —— 独立完成 K 帧推理，logits 帧间平均（时间平滑）；
+ * 决策用原始 logits argmax（温度不参与分类）；显示置信度用类条件温度校准；
+ * 非茶（unknown 类）只显示"未识别"，置信度显示 0。 */
 static void run_npu_infer(void)
 {
     if (!s_npu_ready) {
@@ -300,9 +299,8 @@ static void run_npu_infer(void)
         return;
     }
 
-    int      votes[AI_NUM_CLASSES] = {0};
-    float    win_score = 0.0f;
-    float    win_box[4] = {0, 0, 0, 0};   /* cx,cy,w,h in model 256 space */
+    float l_sum[AI_NUM_CLASSES] = {0};
+    int   n_ok = 0;
 
     for (int k = 0; k < BURST_N; k++) {
         const uint8_t *frame = wait_fresh_frame(60);
@@ -328,53 +326,50 @@ static void run_npu_infer(void)
             continue;
         }
 
-        float best_score; uint32_t best_idx, best_cls;
-        int passed = postprocess(output, &best_score, &best_idx, &best_cls);
-        if (passed) {
-            if (best_cls < AI_NUM_CLASSES) votes[best_cls]++;
-            if (best_score > win_score) {
-                const uint32_t N = AI_NUM_DETECTIONS;  /* 1344 */
-                win_score = best_score;
-                win_box[0] = output[0*N + best_idx];
-                win_box[1] = output[1*N + best_idx];
-                win_box[2] = output[2*N + best_idx];
-                win_box[3] = output[3*N + best_idx];
-            }
-        }
+        printf("[CLS] burst[%d] logits=%.3f/%.3f/%.3f/%.3f\r\n",
+               k,
+               (double)output[0], (double)output[1], (double)output[2], (double)output[3]);
+
+        n_ok++;
+        for (int i = 0; i < AI_NUM_CLASSES; i++) { l_sum[i] += output[i]; }
     }
 
-    /* 突发内多数表决 */
-    int top = -1, topv = 0;
-    for (int c = 0; c < AI_NUM_CLASSES; c++)
-        if (votes[c] > topv) { topv = votes[c]; top = c; }
+    if (n_ok >= BURST_MIN) {
+        /* 帧间平均（时间平滑），再做决策 */
+        float l_avg[AI_NUM_CLASSES];
+        for (int i = 0; i < AI_NUM_CLASSES; i++) { l_avg[i] = l_sum[i] / (float)n_ok; }
 
-    if (top >= 0 && topv >= BURST_MIN) {
-        const float S  = 480.0f / 256.0f;
-        const int   OX = 160, OY = 0;
-        int L = (int)((win_box[0] - win_box[2] * 0.5f) * S) + OX;
-        int T = (int)((win_box[1] - win_box[3] * 0.5f) * S) + OY;
-        int BW = (int)(win_box[2] * S), BH = (int)(win_box[3] * S);
-        if (L < 0) { BW += L; L = 0; }
-        if (T < 0) { BH += T; T = 0; }
-        if (L + BW > 800) BW = 800 - L;
-        if (T + BH > 480) BH = 480 - T;
-        if (BW < 1) BW = 1;
-        if (BH < 1) BH = 1;
+        uint32_t top = 0U;
+        for (int i = 1; i < AI_NUM_CLASSES; i++) {
+            if (l_avg[i] > l_avg[top]) { top = (uint32_t)i; }
+        }
+        float conf = softmax_top_conf(l_avg, top, AI_TEMP_PER_CLASS[top]);
 
-        strncpy(g_t3_result.class_name, g_class_names[top], sizeof(g_t3_result.class_name) - 1U);
-        g_t3_result.class_name[sizeof(g_t3_result.class_name) - 1U] = '\0';
-        g_t3_result.confidence = win_score;
-        g_t3_result.box_x = L; g_t3_result.box_y = T;
-        g_t3_result.box_w = BW; g_t3_result.box_h = BH;
-        g_t3_result.box_valid = 1;
-        g_t3_result_ready = 1U;
+        if (top == (uint32_t)(AI_NUM_CLASSES - 1U)) {
+            /* 非茶（unknown）：只显示"未识别"，置信度显示 0 */
+            fill_none_result(0.0f);
+            printf("[NPU] -> %s  (non-tea, p=%.4f)  votes=%d/%d\r\n",
+                   CLASS_NONE, (double)conf, n_ok, BURST_N);
+        } else if (conf >= AI_REJECT_THRESH) {
+            strncpy(g_t3_result.class_name, g_class_names[top], sizeof(g_t3_result.class_name) - 1U);
+            g_t3_result.class_name[sizeof(g_t3_result.class_name) - 1U] = '\0';
+            g_t3_result.confidence = conf;
+            g_t3_result.box_x = 0; g_t3_result.box_y = 0;
+            g_t3_result.box_w = 0; g_t3_result.box_h = 0;
+            g_t3_result.box_valid  = 0;          /* 分类任务：无检测框 */
+            g_t3_result_ready      = 1U;
 
-        printf("[NPU] -> %s  conf=%.4f  burst_votes=%d/%d\r\n",
-               g_class_names[top], (double)win_score, topv, BURST_N);
+            printf("[NPU] -> %s  conf=%.4f (calibrated)  votes=%d/%d\r\n",
+                   g_class_names[top], (double)conf, n_ok, BURST_N);
+        } else {
+            fill_none_result(0.0f);
+            printf("[NPU] -> %s  conf=%.4f (below reject thresh %.2f)  votes=%d/%d\r\n",
+                   CLASS_NONE, (double)conf, (double)AI_REJECT_THRESH, n_ok, BURST_N);
+        }
     } else {
-        fill_none_result(win_score);
-        printf("[NPU] -> %s  conf=%.4f  burst_votes=%d/%d (insufficient)\r\n",
-               CLASS_NONE, (double)win_score, topv, BURST_N);
+        fill_none_result(0.0f);
+        printf("[NPU] -> %s  votes=%d/%d (insufficient)\r\n",
+               CLASS_NONE, n_ok, BURST_N);
     }
 }
 
@@ -726,7 +721,7 @@ void ai_task(void *arg)
         s_fault_armed   = 0;
         if (ret == 0) {
             s_npu_ready = 1U;
-            printf("[NPU] runtime init OK, detector ready  build=" __DATE__ " " __TIME__ "\r\n");
+            printf("[NPU] runtime init OK, 3-class classifier ready  build=" __DATE__ " " __TIME__ "\r\n");
         } else {
             s_npu_ready = 0U;
             printf("[NPU] ai_model_init FAILED ret=%d\r\n", ret);

@@ -7,6 +7,10 @@
         {
             "name": "STM32_ExtMemLoader",
             "compileCommands": "${workspaceFolder}/ExtMemLoader/build/compile_commands.json"
+        },
+        {
+            "name": "STM32_ExtMemLoader",
+            "compileCommands": "${workspaceFolder}/ExtMemLoader/build/compile_commands.json"
         }
     ]
 }

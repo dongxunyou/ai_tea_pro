@@ -1,0 +1,24 @@
+# ninja log v7
+54	608	8135923251304747	CMakeFiles/01_free_rtos_lcd_ExtMemLoader.dir/Core/Src/stm32n6xx_hal_msp.c.obj	8edf457f6f5a12d5
+107	617	8135923251833769	CMakeFiles/STM32_Drivers.dir/Core/Src/system_stm32n6xx_fsbl.c.obj	c18991d57fa5625a
+44	623	8135923251193181	CMakeFiles/01_free_rtos_lcd_ExtMemLoader.dir/Core/Src/extmem_manager.c.obj	9b9df985a6c214f6
+70	632	8135923251454966	CMakeFiles/01_free_rtos_lcd_ExtMemLoader.dir/Core/Src/extmemloader_init.c.obj	1eb60842aefde9e9
+125	707	8135923252000097	CMakeFiles/STM32_Drivers.dir/D_/stm32n6tea_project/ai_tea_pro/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_cortex.c.obj	41abe0ddbf723a15
+238	712	8135923253135885	CMakeFiles/STM32_ExtMem_Manager.dir/D_/stm32n6tea_project/ai_tea_pro/Middlewares/ST/STM32_ExtMem_Manager/sal/stm32_sal_sd.c.obj	5411001b3b1a7ed2
+199	772	8135923252750537	CMakeFiles/STM32_Drivers.dir/D_/stm32n6tea_project/ai_tea_pro/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_pwr.c.obj	f9058d1f6a7ee8a
+233	777	8135923253084326	CMakeFiles/STM32_ExtMem_Manager.dir/D_/stm32n6tea_project/ai_tea_pro/Middlewares/ST/STM32_ExtMem_Manager/sal/stm32_sal_xspi.c.obj	35349b416b4791a9
+226	782	8135923253015685	CMakeFiles/STM32_ExtMem_Manager.dir/D_/stm32n6tea_project/ai_tea_pro/Middlewares/ST/STM32_ExtMem_Manager/stm32_extmem.c.obj	f0f4bb6f0e0a44d7
+169	787	8135923252450632	CMakeFiles/STM32_Drivers.dir/D_/stm32n6tea_project/ai_tea_pro/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_gpio.c.obj	95f420f027a14ce3
+220	830	8135923252965680	CMakeFiles/STM32_Drivers.dir/D_/stm32n6tea_project/ai_tea_pro/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_exti.c.obj	4edc7738f5847e09
+208	847	8135923252830785	CMakeFiles/STM32_Drivers.dir/D_/stm32n6tea_project/ai_tea_pro/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_pwr_ex.c.obj	9215f9bcfe64e8ac
+617	894	8135923256928458	CMakeFiles/STM32_ExtMem_Manager.dir/D_/stm32n6tea_project/ai_tea_pro/Middlewares/ST/STM32_ExtMem_Manager/psram/stm32_psram_driver.c.obj	c092ae41ab749ea0
+623	923	8135923256993637	CMakeFiles/STM32_ExtMem_Manager.dir/D_/stm32n6tea_project/ai_tea_pro/Middlewares/ST/STM32_ExtMem_Manager/sdcard/stm32_sdcard_driver.c.obj	f06b766bdd83e984
+214	937	8135923252897947	CMakeFiles/STM32_Drivers.dir/D_/stm32n6tea_project/ai_tea_pro/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal.c.obj	63a85c7c79932ee0
+632	950	8135923257073623	CMakeFiles/STM32_ExtMem_Manager.dir/D_/stm32n6tea_project/ai_tea_pro/Middlewares/ST/STM32_ExtMem_Manager/user/stm32_user_driver.c.obj	e58047b1ad3b6015
+140	952	8135923252159368	CMakeFiles/STM32_Drivers.dir/D_/stm32n6tea_project/ai_tea_pro/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_rcc.c.obj	9ce25f5ecd102145
+244	955	8135923253193998	CMakeFiles/STM32_ExtMem_Manager.dir/D_/stm32n6tea_project/ai_tea_pro/Middlewares/ST/STM32_ExtMem_Manager/nor_sfdp/stm32_sfdp_data.c.obj	8512c1a0e01e2ceb
+180	974	8135923252554240	CMakeFiles/STM32_Drivers.dir/D_/stm32n6tea_project/ai_tea_pro/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_dma.c.obj	15f587623e949cf4
+609	1025	8135923256843179	CMakeFiles/STM32_ExtMem_Manager.dir/D_/stm32n6tea_project/ai_tea_pro/Middlewares/ST/STM32_ExtMem_Manager/nor_sfdp/stm32_sfdp_driver.c.obj	243fd85125427c4d
+191	1095	8135923252665062	CMakeFiles/STM32_Drivers.dir/D_/stm32n6tea_project/ai_tea_pro/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_dma_ex.c.obj	a4f2f08ae9481d42
+154	1347	8135923252300356	CMakeFiles/STM32_Drivers.dir/D_/stm32n6tea_project/ai_tea_pro/Drivers/STM32N6xx_HAL_Driver/Src/stm32n6xx_hal_rcc_ex.c.obj	f07a380be36fe636
+1347	1798	8135923264226036	01_free_rtos_lcd_ExtMemLoader.elf	24672bbcfb5e8213

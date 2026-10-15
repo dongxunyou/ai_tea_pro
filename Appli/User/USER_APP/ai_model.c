@@ -694,10 +694,66 @@ static int npu_exec_once(void)
     return 0;
 }
 
+/* ============================================================
+ * 量化 I/O 转换层（2026-10 三分类改造新增）
+ * ------------------------------------------------------------
+ * 新版 network.c（YOLOv8n-cls @320）的输入/输出都是 INT8 量化张量：
+ *   输入 "Input_0_out_0"     : S8  scale=0.00388901657424867  zp=-128
+ *   输出 "Quantize_230_out_0": S8  scale=0.1993582844734192   zp=-18
+ * （旧版 detect 为 UINT8 输入 + FLOAT 直出，旧代码直接 memcpy。）
+ *
+ * 本层职责（对 ai_task.c 完全透明，ai_model_run 签名不变）：
+ *   - 输入：uint8 像素(0-255，网络语义 x=pixel/255) -> int8 量化字节
+ *            q = clamp(round(x / scale) + zp, -128, 127)
+ *            预计算 256 项 LUT，运行时逐像素查表
+ *   - 输出：int8 q x 3 -> float logits
+ *            logits[i] = (q[i] - zp) * scale
+ *            存入静态 float[AI_NUM_CLASSES]，返回其指针
+ *   - 若非 INT8 类型（未来重生成变回 UINT8/FLOAT 时），自动回退旧行为
+ * ============================================================ */
+static uint8_t s_in_lut[256];
+static int     s_in_lut_mode;     /* 0=直通(非INT8) 1=查表(INT8) */
+static int     s_in_lut_ready;    /* 0=未构建 1=已构建 */
+static float   s_out_logits[AI_NUM_CLASSES];
+
+static void io_conv_prepare(void)
+{
+    if (s_in_lut_ready) {
+        return;
+    }
+    s_in_lut_mode  = 0;
+    s_in_lut_ready = 1;
+
+    const LL_Buffer_InfoTypeDef *in_info = LL_ATON_Input_Buffers_Info_Default();
+    if (in_info == NULL || in_info[0].name == NULL) {
+        return;
+    }
+    if (in_info[0].type == DataType_INT8 && in_info[0].scale != NULL && in_info[0].offset != NULL) {
+        const float sc = in_info[0].scale[0];
+        const int   zp = (int)in_info[0].offset[0];
+        if (sc > 0.0f) {
+            for (int p = 0; p < 256; p++) {
+                float x = (float)p / 255.0f;          /* 与训练归一化一致 */
+                int   q = (int)(x / sc + 0.5f) + zp;  /* round + zero_point */
+                if (q >  127) { q =  127; }
+                if (q < -128) { q = -128; }
+                s_in_lut[p] = (uint8_t)(int8_t)q;
+            }
+            s_in_lut_mode = 1;
+        }
+        printf("[NPU] IO: input INT8 quant (scale=%.10f zp=%d) -> LUT enabled\r\n",
+               (double)sc, zp);
+    } else {
+        printf("[NPU] IO: input type=%d non-INT8 -> direct copy\r\n", (int)in_info[0].type);
+    }
+}
+
 int ai_model_run(const uint8_t *input, const float **output)
 {
     if (input == NULL || output == NULL)
         return -1;
+
+    io_conv_prepare();
 
     const LL_Buffer_InfoTypeDef *in_info  = LL_ATON_Input_Buffers_Info_Default();
     const LL_Buffer_InfoTypeDef *out_info = LL_ATON_Output_Buffers_Info_Default();
@@ -709,7 +765,15 @@ int ai_model_run(const uint8_t *input, const float **output)
     if (in_buf == NULL) {
         return -3;
     }
-    memcpy(in_buf, input, AI_INPUT_SIZE);
+
+    if (s_in_lut_mode) {
+        /* uint8 像素 -> int8 量化字节（"Input_0_out_0" 参数） */
+        for (uint32_t i = 0U; i < (uint32_t)AI_INPUT_SIZE; i++) {
+            in_buf[i] = s_in_lut[input[i]];
+        }
+    } else {
+        memcpy(in_buf, input, AI_INPUT_SIZE);
+    }
     __DSB();   /* FIX-4: 确保 CPU 写入在 NPU 读取前可见 */
 
     /* 用厂商一站式 EC 驱动；Init_Network / epoch 循环 / DeInit 都由 RT_Main 内部完成。*/
@@ -718,9 +782,25 @@ int ai_model_run(const uint8_t *input, const float **output)
     if (out_info == NULL || out_info[0].name == NULL) {
         return -4;
     }
-    *output = (const float *)LL_Buffer_addr_start(&out_info[0]);
-    if (*output == NULL) {
-        return -5;
+
+    if (out_info[0].type == DataType_INT8 && out_info[0].scale != NULL && out_info[0].offset != NULL) {
+        /* int8 -> float 反量化（"Quantize_230_out_0" 参数） */
+        const int8_t *q  = (const int8_t *)LL_Buffer_addr_start(&out_info[0]);
+        const float   sc = out_info[0].scale[0];
+        const int     zp = (int)out_info[0].offset[0];
+        if (q == NULL) {
+            return -5;
+        }
+        for (int i = 0; i < AI_NUM_CLASSES; i++) {
+            s_out_logits[i] = ((float)q[i] - (float)zp) * sc;
+        }
+        *output = s_out_logits;
+    } else {
+        /* 兼容旧行为：float 直出 */
+        *output = (const float *)LL_Buffer_addr_start(&out_info[0]);
+        if (*output == NULL) {
+            return -5;
+        }
     }
 
     /* 输出在 AXISRAM(非缓存 cacheable=OFF)，CPU 直接读即可；若日后发现 score

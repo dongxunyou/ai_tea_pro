@@ -408,38 +408,35 @@ static void on_identify(lv_event_t *e)
 }
 
 /* ============================================================
- * 英文茶名 → 中文（显示层映射，不改模型/标识符）
+ * 茶名显示层
  * ------------------------------------------------------------
- * ai_task.c 里 g_class_names[] 输出的是模型内部英文名
- * （black_tea / green_tangerine_puer_tea ...），界面上要显示中文，
- * 映射只在 UI 层做。"---" 与空串表示未识别。
+ * 三分类改造后 ai_task.c 的 g_class_names[] 已直接输出中文
+ * （红茶/绿茶/青柑普洱）；本函数保留 英文->中文 映射与"未识别"兜底。
  * ============================================================ */
-static const char *tea_name_cn_from_str(const char *eng)
+static const char *tea_name_cn_from_str(const char *name)
 {
     static const char *eng_names[] = {
-        "black_tea",
-        "green_tea",
-        "chrysanthemum_tea",
-        "yinghong_black_tea",
-        "green_tangerine_puer_tea",
+        "black",
+        "green",
+        "puer",
+        "unknown",
     };
     static const char *cn_names[] = {
         "红茶",
         "绿茶",
-        "菊花茶",
-        "英红红茶",
-        "小青柑普洱茶",
+        "青柑普洱",
+        "未识别",
     };
 
-    if (eng == NULL) return "未识别";
-    if (strcmp(eng, "---") == 0) return "未识别";
+    if (name == NULL) return "未识别";
+    if (strcmp(name, "---") == 0) return "未识别";
 
     for (size_t i = 0U; i < sizeof(eng_names) / sizeof(eng_names[0]); i++) {
-        if (strcmp(eng, eng_names[i]) == 0) {
+        if (strcmp(name, eng_names[i]) == 0) {
             return cn_names[i];
         }
     }
-    return eng;
+    return name;   /* 已是中文则原样返回 */
 }
 
 /* ============================================================
@@ -462,9 +459,9 @@ static void tick_cb(lv_timer_t *tmr)
         const char *name = g_t3_result.class_name;
         float       conf = g_t3_result.confidence;
 
-        /* 显示中文茶名（模型给的是英文名，这里做显示层映射）*/
+        /* 显示中文茶名（g_class_names 已是中文，函数做兜底映射）*/
         lv_label_set_text_fmt(s_cls_lbl, "类别：%s", tea_name_cn_from_str(name));
-        lv_label_set_text_fmt(s_conf_lbl, "置信度：%.2f", (double)conf);
+        lv_label_set_text_fmt(s_conf_lbl, "置信度：%.2f%%", (double)conf * 100.0);
 
         if (g_t3_result.box_valid != 0U) {
             lv_label_set_text_fmt(s_box_lbl, "框：%d,%d %dx%d",
