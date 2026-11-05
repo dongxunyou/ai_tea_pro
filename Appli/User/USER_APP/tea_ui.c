@@ -78,6 +78,7 @@ static lv_obj_t *s_box_lbl    = NULL; /* 检测框 */
 static lv_obj_t *s_btn_mode_tea = NULL; /* 模式按钮：茶叶分类 */
 static lv_obj_t *s_btn_mode_pkg = NULL; /* 模式按钮：包装检测 */
 static lv_obj_t *s_tip_lbl      = NULL; /* 提示文字（随模式变化） */
+static lv_obj_t *s_prog_bar     = NULL; /* 识别进度条 */
 
 /* 预览 RGB888 缓冲（cam_resize 写入，LVGL canvas 直接引用）*/
 static uint8_t s_cam_prev[PREV_W * PREV_H * 3]
@@ -409,6 +410,17 @@ static void build_id_scr(void)
     lv_obj_set_style_text_font(s_tip_lbl, &lv_font_cn_16, LV_PART_MAIN);
     lv_obj_set_pos(s_tip_lbl, 400, 310);
 
+    /* 识别进度条（右列，识别期间显示 0-100%） */
+    s_prog_bar = lv_bar_create(s_id_scr);
+    lv_obj_set_size(s_prog_bar, 320, 14);
+    lv_obj_set_pos(s_prog_bar, 400, 350);
+    lv_bar_set_range(s_prog_bar, 0, 100);
+    lv_bar_set_value(s_prog_bar, 0, LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(s_prog_bar, lv_color_hex(C_PANEL2), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(s_prog_bar, lv_color_hex(C_ACCENT), LV_PART_INDICATOR);
+    lv_obj_set_style_radius(s_prog_bar, 7, LV_PART_MAIN);
+    lv_obj_add_flag(s_prog_bar, LV_OBJ_FLAG_HIDDEN);
+
     ui_update_mode_buttons();
 }
 
@@ -420,6 +432,10 @@ static void on_identify(lv_event_t *e)
     lv_label_set_text(s_cls_lbl, "识别中...");
     lv_label_set_text(s_conf_lbl, "");
     lv_label_set_text(s_box_lbl, "");
+    if (s_prog_bar != NULL) {
+        lv_obj_clear_flag(s_prog_bar, LV_OBJ_FLAG_HIDDEN);
+        lv_bar_set_value(s_prog_bar, 0, LV_ANIM_OFF);
+    }
     ai_task_trigger_infer();
 }
 
@@ -529,9 +545,21 @@ static void tick_cb(lv_timer_t *tmr)
         lv_obj_invalidate(s_cam_canvas);
     }
 
+    /* 识别进度条：推理期间按帧刷新 */
+    if (s_prog_bar != NULL) {
+        if (g_ai_infer_busy != 0U) {
+            lv_obj_clear_flag(s_prog_bar, LV_OBJ_FLAG_HIDDEN);
+            lv_bar_set_value(s_prog_bar, g_ai_infer_progress, LV_ANIM_OFF);
+        }
+    }
+
     /* 结果到达：刷到界面上 */
     if (g_t3_result_ready != 0U) {
         g_t3_result_ready = 0U;
+
+        if (s_prog_bar != NULL) {
+            lv_bar_set_value(s_prog_bar, 100, LV_ANIM_OFF);
+        }
 
         const char *name = g_t3_result.class_name;
         float       conf = g_t3_result.confidence;

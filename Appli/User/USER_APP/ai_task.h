@@ -29,9 +29,11 @@ extern T3Result_t g_t3_result;
 /* ai_task → LVGL 任务的异步通知标志：ai_task 写完 g_t3_result 后置 1 */
 extern volatile uint8_t g_t3_result_ready;
 
-/* 推理进行中标志（ai_task 置位；UI 定时器据此暂停相机预览缩放，
- * 减少 CPU 从 XSPI2 取指，把总线让给 NPU 读权重） */
+/* 推理进行中标志（供 tea_ui 降载相机预览，减少 XSPI2 取指争用） */
 extern volatile uint8_t g_ai_infer_busy;
+
+/* 推理进度 0-100（每帧更新，供 UI 进度条显示） */
+extern volatile uint8_t g_ai_infer_progress;
 
 /**
  * @brief FreeRTOS 任务入口

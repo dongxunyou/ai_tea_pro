@@ -806,7 +806,15 @@ int ai_model_run(const uint8_t *input, const float **output)
         if (in_buf == NULL)
             return -3;
 
-        memcpy(in_buf, input, PKG_INPUT_SIZE);
+        /* detect 输入是 INT8 量化（scale=1/255, zero_point=-128）：
+         * q = round(pixel/255 / (1/255)) - 128 = pixel - 128
+         * 等价位运算 pixel ^ 0x80（uint8 -> int8 补码偏移）。 */
+        {
+            int8_t *q = (int8_t *)in_buf;
+            for (uint32_t i = 0U; i < PKG_INPUT_SIZE; i++) {
+                q[i] = (int8_t)(input[i] ^ 0x80U);
+            }
+        }
         __DSB();   /* FIX-4: 确保 CPU 写入在 NPU 读取前可见 */
 
         (void)npu_exec_once();

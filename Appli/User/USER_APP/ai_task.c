@@ -52,6 +52,9 @@ volatile uint8_t g_t3_result_ready = 0U;
 /* 推理进行中标志（供 tea_ui 降载相机预览，减少 XSPI2 取指争用） */
 volatile uint8_t g_ai_infer_busy   = 0U;
 
+/* 推理进度 0-100（供 UI 进度条） */
+volatile uint8_t g_ai_infer_progress = 0U;
+
 /* ============================================================
  *                      可调参数
  * ============================================================ */
@@ -82,10 +85,10 @@ volatile uint8_t g_ai_infer_busy   = 0U;
  * 校准目标：三类茶 p5 ≥ 93%、典型 95~99%（不虚高、有区分度）。
  * 若板端实拍（尤其绿茶）仍偏低，按实拍 logits 继续调这三个值即可。 */
 static const float AI_TEMP_PER_CLASS[AI_NUM_CLASSES] = {
-    4.4f,   /* [0] black   */
-    1.5f,   /* [1] green   */
-    2.3f,   /* [2] puer    */
-    3.0f    /* [3] unknown（界面显示恒 0，此值仅用于日志换算） */
+    1.5f,   /* [0] black   （原 4.4 过度平滑，置信度显示偏低） */
+    1.2f,   /* [1] green   （原 1.5） */
+    1.5f,   /* [2] puer    （原 2.3） */
+    1.0f    /* [3] unknown（界面显示恒 0，此值仅用于日志换算） */
 };
 
 /* 拒识阈值：5 帧平均概率低于此值 → 显示"未识别"
@@ -360,6 +363,7 @@ static void run_npu_infer_tea(void)
     int   n_ok = 0;
 
     for (int k = 0; k < BURST_N; k++) {
+        g_ai_infer_progress = (uint8_t)((k * 100) / BURST_N);
         const uint8_t *frame = wait_fresh_frame(60);
 
         /* ---- fault 保护（FIX-2 保留原有 setjmp）---- */
@@ -441,6 +445,7 @@ static void run_npu_infer_pkg(void)
     float    win_box[4] = {0, 0, 0, 0};   /* cx,cy,w,h in model 256 space */
 
     for (int k = 0; k < BURST_N; k++) {
+        g_ai_infer_progress = (uint8_t)((k * 100) / BURST_N);
         const uint8_t *frame = wait_fresh_frame(60);
 
         /* ---- fault 保护 ---- */
@@ -531,6 +536,7 @@ static void run_npu_infer(void)
     /* 推理期间置忙：tea_ui 的 50ms 定时器据此暂停相机预览缩放，
      * 减少 CPU 从 XSPI2 取指，避免与 NPU 读权重争用总线。 */
     g_ai_infer_busy = 1U;
+    g_ai_infer_progress = 0U;
 
     if (ai_model_get_mode() == AI_MODE_PACKAGE) {
         run_npu_infer_pkg();
@@ -538,6 +544,7 @@ static void run_npu_infer(void)
         run_npu_infer_tea();
     }
 
+    g_ai_infer_progress = 100U;
     g_ai_infer_busy = 0U;
 }
 
