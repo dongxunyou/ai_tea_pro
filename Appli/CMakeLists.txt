@@ -79,6 +79,7 @@ set(XCUBEAI_APP_DIR
 )
 set(XCUBEAI_APP_SOURCES
     "${XCUBEAI_APP_DIR}/network.c"
+    "${XCUBEAI_APP_DIR}/detect/detect.c"
 )
 
 # ===== X-CUBE-AI NPU 运行时源文件 =====
@@ -135,6 +136,7 @@ target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
 # network.c 有 7 万行，强制单文件 -O2，避免 -O3 下编译吃几个 GB 内存
 set_source_files_properties(
     "${CMAKE_CURRENT_SOURCE_DIR}/../ExtMemLoader/X-CUBE-AI/App/network.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../ExtMemLoader/X-CUBE-AI/App/detect/detect.c"
     PROPERTIES COMPILE_FLAGS "-O2"
 )
 

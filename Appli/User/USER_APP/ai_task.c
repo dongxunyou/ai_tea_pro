@@ -49,6 +49,9 @@ volatile uint8_t  g_aton_irq_test_mode = 0U;
 T3Result_t       g_t3_result       = { "---", 0.0f, 0, 0, 0, 0, 0 };
 volatile uint8_t g_t3_result_ready = 0U;
 
+/* 推理进行中标志（供 tea_ui 降载相机预览，减少 XSPI2 取指争用） */
+volatile uint8_t g_ai_infer_busy   = 0U;
+
 /* ============================================================
  *                      可调参数
  * ============================================================ */
@@ -103,6 +106,25 @@ static const char * const g_class_names[AI_NUM_CLASSES] = {
     "未识别"     /* [3] unknown：非茶 */
 };
 #define CLASS_NONE       "---"
+
+/* ================= 包装检测（detect 5 类，256×256）参数 =================
+ * 与课设（main 分支）原有参数一致：DET_SCORE_THRESH / CLS_GAIN / CLS_THRESH */
+#define PKG_NET_W            256U
+#define PKG_NET_H            256U
+#define PKG_NUM_CLASSES      5
+#define PKG_NUM_DETECTIONS   1344
+#define PKG_DET_SCORE_THRESH 0.35f
+
+static const float PKG_CLS_GAIN[PKG_NUM_CLASSES]   = { 1.00f, 1.00f, 1.25f, 1.20f, 1.00f };
+static const float PKG_CLS_THRESH[PKG_NUM_CLASSES] = { 0.50f, 0.50f, 0.30f, 0.32f, 0.50f };
+
+static const char * const g_pkg_class_names[PKG_NUM_CLASSES] = {
+    "black_tea",               /* ch4 */
+    "green_tea",               /* ch5 */
+    "chrysanthemum_tea",       /* ch6 */
+    "yinghong_black_tea",      /* ch7 */
+    "green_tangerine_puer_tea" /* ch8 */
+};
 
 /* NPU 初始化看门狗超时（毫秒）。RuntimeInit 正常应在 1 秒内返回，
  * 给宽裕值；超过即判定它 hang。 */
@@ -199,26 +221,27 @@ static void ai_init_watchdog(void *arg)
 }
 
 /* ------------------------------------------------------------
- * 预处理：cam_read_buf (800x480 RGB565) → s_net_input (320x320x3 NCHW uint8)
- * 几何处理 = center-square-crop(480x480) + 直接缩放(320)，与训练一致；
+ * 预处理：cam_read_buf (800x480 RGB565) → s_net_input (net_w×net_h×3 NCHW uint8)
+ * 几何处理 = center-square-crop(480x480) + 直接缩放(net_w×net_h)；
+ *   TEA 模式传 320×320、PACKAGE 模式传 256×256（与各自训练一致）
  * pixel→int8 量化转换在 ai_model_run 内部完成（本函数只产出 uint8 像素）
  * ------------------------------------------------------------ */
-static void preprocess_frame(const uint8_t *frame)
+static void preprocess_frame_ex(const uint8_t *frame, uint32_t net_w, uint32_t net_h)
 {
     const uint32_t crop = (CAM_H < CAM_W) ? CAM_H : CAM_W;   /* 480 */
     const uint32_t x0   = (CAM_W - crop) / 2U;               /* 160 */
     const uint32_t y0   = (CAM_H - crop) / 2U;               /* 0   */
 
     uint8_t *plane0 = &s_net_input[0];
-    uint8_t *plane1 = &s_net_input[NET_W * NET_H];
-    uint8_t *plane2 = &s_net_input[NET_W * NET_H * 2];
+    uint8_t *plane1 = &s_net_input[net_w * net_h];
+    uint8_t *plane2 = &s_net_input[net_w * net_h * 2];
 
-    for (uint32_t dy = 0U; dy < NET_H; dy++) {
-        uint32_t sy = y0 + (dy * crop) / NET_H;
+    for (uint32_t dy = 0U; dy < net_h; dy++) {
+        uint32_t sy = y0 + (dy * crop) / net_h;
         const uint8_t *srow = frame + (uint32_t)sy * CAM_STRIDE;
 
-        for (uint32_t dx = 0U; dx < NET_W; dx++) {
-            uint32_t sx = x0 + (dx * crop) / NET_W;
+        for (uint32_t dx = 0U; dx < net_w; dx++) {
+            uint32_t sx = x0 + (dx * crop) / net_w;
             const uint8_t *p = srow + (uint32_t)sx * 2U;
             uint16_t px = (uint16_t)(p[0] | ((uint16_t)p[1] << 8));
 
@@ -233,7 +256,7 @@ static void preprocess_frame(const uint8_t *frame)
             { uint8_t t = R8; R8 = B8; B8 = t; }
 #endif
 
-            uint32_t idx = dy * NET_W + dx;
+            uint32_t idx = dy * net_w + dx;
 
 #if PREPROC_RB_SWAP
             plane0[idx] = B8;
@@ -275,6 +298,48 @@ static float softmax_top_conf(const float *logits, uint32_t top, float T)
     return etop / sum;
 }
 
+/* ------------------------------------------------------------
+ * 包装检测后处理：YOLO float32 chfirst [9,1344]，找最高分框+类
+ * （从课设 main 分支移植，参数与之前完全一致）
+ * ------------------------------------------------------------ */
+static int postprocess_pkg(const float *out, float *best_score_out,
+                           uint32_t *best_idx_out, uint32_t *best_cls_out)
+{
+    const uint32_t N = PKG_NUM_DETECTIONS;
+
+    float    best_score = -1.0f;
+    uint32_t best_idx   = 0U;
+    uint32_t best_cls   = 0U;
+    uint32_t n_active   = 0U;
+
+    for (uint32_t i = 0U; i < N; i++) {
+        float cls_score  = -1.0f;
+        uint32_t cls_id  = 0U;
+        for (uint32_t c = 0U; c < PKG_NUM_CLASSES; c++) {
+            float v = out[(4U + c) * N + i] * PKG_CLS_GAIN[c];
+            if (v > cls_score) { cls_score = v; cls_id = c; }
+        }
+        if (cls_score > 0.10f) n_active++;
+        if (cls_score > best_score) {
+            best_score = cls_score; best_idx = i; best_cls = cls_id;
+        }
+    }
+
+    float cx = out[0U*N + best_idx], cy = out[1U*N + best_idx];
+    float w  = out[2U*N + best_idx],  h = out[3U*N + best_idx];
+    printf("[DET] top=%s score_g=%.4f raw=%.4f thr=%.2f n_active=%lu box(%.1f,%.1f,%.1f,%.1f)\r\n",
+           g_pkg_class_names[best_cls], (double)best_score,
+           (double)(best_score / PKG_CLS_GAIN[best_cls]),
+           (double)PKG_CLS_THRESH[best_cls], (unsigned long)n_active,
+           (double)cx, (double)cy, (double)w, (double)h);
+
+    if (best_score_out) *best_score_out = best_score;
+    if (best_idx_out)   *best_idx_out   = best_idx;
+    if (best_cls_out)   *best_cls_out   = best_cls;
+
+    return (best_score > PKG_CLS_THRESH[best_cls]) ? 1 : 0;
+}
+
 /* 小工具：填"未检测到"结果 */
 static void fill_none_result(float conf)
 {
@@ -285,20 +350,12 @@ static void fill_none_result(float conf)
     g_t3_result_ready = 1U;
 }
 
-/* FIX-2: 单次按键突发 —— 独立完成 K 帧推理，logits 帧间平均（时间平滑）；
- * 决策用原始 logits argmax（温度不参与分类）；显示置信度用类条件温度校准；
- * 非茶（unknown 类）只显示"未识别"，置信度显示 0。 */
-static void run_npu_infer(void)
+/* ============================================================
+ * TEA 模式：茶叶四分类（cls 4 类，320×320）
+ * 5 帧 logits 平均 → argmax → 类条件温度置信度 → 拒识/未识别
+ * ============================================================ */
+static void run_npu_infer_tea(void)
 {
-    if (!s_npu_ready) {
-        /* ★ 探针：这一行是"每次点识别都显示未识别"的头号嫌疑人。*/
-        printf("[NPU] PROBE: s_npu_ready=%u → NPU 未初始化成功, 直接填'%s'\r\n",
-               (unsigned)s_npu_ready, CLASS_NONE);
-        printf("[NPU] not ready, skip\r\n");
-        fill_none_result(0.0f);
-        return;
-    }
-
     float l_sum[AI_NUM_CLASSES] = {0};
     int   n_ok = 0;
 
@@ -315,7 +372,7 @@ static void run_npu_infer(void)
         }
         s_fault_armed = 1;
 
-        preprocess_frame(frame);
+        preprocess_frame_ex(frame, NET_W, NET_H);
 
         const float *output = NULL;
         int ret = ai_model_run(s_net_input, &output);
@@ -371,6 +428,117 @@ static void run_npu_infer(void)
         printf("[NPU] -> %s  votes=%d/%d (insufficient)\r\n",
                CLASS_NONE, n_ok, BURST_N);
     }
+}
+
+/* ============================================================
+ * PACKAGE 模式：茶叶包装检测（detect 5 类，256×256）
+ * 5 帧多数投票 → 最高分框 + 类别；坐标换算回 800×480 屏幕空间
+ * ============================================================ */
+static void run_npu_infer_pkg(void)
+{
+    int      votes[PKG_NUM_CLASSES] = {0};
+    float    win_score = 0.0f;
+    float    win_box[4] = {0, 0, 0, 0};   /* cx,cy,w,h in model 256 space */
+
+    for (int k = 0; k < BURST_N; k++) {
+        const uint8_t *frame = wait_fresh_frame(60);
+
+        /* ---- fault 保护 ---- */
+        int jc = setjmp(s_fault_jmp);
+        if (jc != 0) {
+            s_fault_armed = 0;
+            printf("[NPU] *** FAULT during inference burst[%d] (jc=%d) CFSR=%08lX HFSR=%08lX -> skip frame ***\r\n",
+                   k, jc, (unsigned long)SCB->CFSR, (unsigned long)SCB->HFSR);
+            continue;
+        }
+        s_fault_armed = 1;
+
+        preprocess_frame_ex(frame, PKG_NET_W, PKG_NET_H);
+
+        const float *output = NULL;
+        int ret = ai_model_run(s_net_input, &output);
+        s_fault_armed = 0;
+
+        if (ret != 0 || output == NULL) {
+            printf("[NPU] ai_model_run failed ret=%d burst[%d]\r\n", ret, k);
+            continue;
+        }
+
+        float best_score; uint32_t best_idx, best_cls;
+        int passed = postprocess_pkg(output, &best_score, &best_idx, &best_cls);
+        if (passed) {
+            if (best_cls < PKG_NUM_CLASSES) votes[best_cls]++;
+            if (best_score > win_score) {
+                const uint32_t N = PKG_NUM_DETECTIONS;  /* 1344 */
+                win_score = best_score;
+                win_box[0] = output[0*N + best_idx];
+                win_box[1] = output[1*N + best_idx];
+                win_box[2] = output[2*N + best_idx];
+                win_box[3] = output[3*N + best_idx];
+            }
+        }
+    }
+
+    /* 突发内多数表决 */
+    int top = -1, topv = 0;
+    for (int c = 0; c < PKG_NUM_CLASSES; c++)
+        if (votes[c] > topv) { topv = votes[c]; top = c; }
+
+    if (top >= 0 && topv >= BURST_MIN) {
+        const float S  = 480.0f / 256.0f;
+        const int   OX = 160, OY = 0;
+        int L = (int)((win_box[0] - win_box[2] * 0.5f) * S) + OX;
+        int T = (int)((win_box[1] - win_box[3] * 0.5f) * S) + OY;
+        int BW = (int)(win_box[2] * S), BH = (int)(win_box[3] * S);
+        if (L < 0) { BW += L; L = 0; }
+        if (T < 0) { BH += T; T = 0; }
+        if (L + BW > 800) BW = 800 - L;
+        if (T + BH > 480) BH = 480 - T;
+        if (BW < 1) BW = 1;
+        if (BH < 1) BH = 1;
+
+        strncpy(g_t3_result.class_name, g_pkg_class_names[top], sizeof(g_t3_result.class_name) - 1U);
+        g_t3_result.class_name[sizeof(g_t3_result.class_name) - 1U] = '\0';
+        g_t3_result.confidence = win_score;
+        g_t3_result.box_x = L; g_t3_result.box_y = T;
+        g_t3_result.box_w = BW; g_t3_result.box_h = BH;
+        g_t3_result.box_valid = 1;
+        g_t3_result_ready = 1U;
+
+        printf("[NPU] -> %s  conf=%.4f  burst_votes=%d/%d\r\n",
+               g_pkg_class_names[top], (double)win_score, topv, BURST_N);
+    } else {
+        fill_none_result(win_score);
+        printf("[NPU] -> %s  conf=%.4f  burst_votes=%d/%d (insufficient)\r\n",
+               CLASS_NONE, (double)win_score, topv, BURST_N);
+    }
+}
+
+/* ============================================================
+ * 识别触发入口：按当前模式分发（TEA / PACKAGE）
+ * ============================================================ */
+static void run_npu_infer(void)
+{
+    if (!s_npu_ready) {
+        /* ★ 探针：这一行是"每次点识别都显示未识别"的头号嫌疑人。*/
+        printf("[NPU] PROBE: s_npu_ready=%u → NPU 未初始化成功, 直接填'%s'\r\n",
+               (unsigned)s_npu_ready, CLASS_NONE);
+        printf("[NPU] not ready, skip\r\n");
+        fill_none_result(0.0f);
+        return;
+    }
+
+    /* 推理期间置忙：tea_ui 的 50ms 定时器据此暂停相机预览缩放，
+     * 减少 CPU 从 XSPI2 取指，避免与 NPU 读权重争用总线。 */
+    g_ai_infer_busy = 1U;
+
+    if (ai_model_get_mode() == AI_MODE_PACKAGE) {
+        run_npu_infer_pkg();
+    } else {
+        run_npu_infer_tea();
+    }
+
+    g_ai_infer_busy = 0U;
 }
 
 /* ============================================================
@@ -721,7 +889,8 @@ void ai_task(void *arg)
         s_fault_armed   = 0;
         if (ret == 0) {
             s_npu_ready = 1U;
-            printf("[NPU] runtime init OK, 3-class classifier ready  build=" __DATE__ " " __TIME__ "\r\n");
+            ai_model_set_mode(AI_MODE_TEA);   /* 上电默认：茶叶分类模式 */
+            printf("[NPU] runtime init OK, dual-model (TEA default) ready  build=" __DATE__ " " __TIME__ "\r\n");
         } else {
             s_npu_ready = 0U;
             printf("[NPU] ai_model_init FAILED ret=%d\r\n", ret);

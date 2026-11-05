@@ -20,6 +20,7 @@
 #include "lvgl.h"
 #include "main.h"               /* SCB cache 操作 */
 #include "ai_task.h"            /* ai_task_trigger_infer / T3Result_t / g_t3_result(_ready) */
+#include "ai_model.h"           /* ai_model_set_mode / ai_model_get_mode / AI_MODE_* */
 #include "ov5640_dcmipp.h"      /* cam_read_buf / CAM_W / CAM_H */
 
 #include <stdio.h>
@@ -74,6 +75,9 @@ static lv_obj_t *s_cam_canvas = NULL; /* 识别画面里的相机预览 canvas *
 static lv_obj_t *s_cls_lbl    = NULL; /* 类别 */
 static lv_obj_t *s_conf_lbl   = NULL; /* 置信度 */
 static lv_obj_t *s_box_lbl    = NULL; /* 检测框 */
+static lv_obj_t *s_btn_mode_tea = NULL; /* 模式按钮：茶叶分类 */
+static lv_obj_t *s_btn_mode_pkg = NULL; /* 模式按钮：包装检测 */
+static lv_obj_t *s_tip_lbl      = NULL; /* 提示文字（随模式变化） */
 
 /* 预览 RGB888 缓冲（cam_resize 写入，LVGL canvas 直接引用）*/
 static uint8_t s_cam_prev[PREV_W * PREV_H * 3]
@@ -198,6 +202,9 @@ void ui_show_main(void) { go_main(); }
 static void on_ai_card_click(lv_event_t *e);
 static void on_back_to_main(lv_event_t *e);
 static void on_identify(lv_event_t *e);
+static void on_mode_tea(lv_event_t *e);
+static void on_mode_pkg(lv_event_t *e);
+static void ui_update_mode_buttons(void);
 
 /* ============================================================
  * 开始画面（主界面）：壁纸 + 品牌 + AI 识茶卡
@@ -391,9 +398,18 @@ static void build_id_scr(void)
     lv_obj_set_style_text_font(s_box_lbl, &lv_font_cn_24, LV_PART_MAIN);
     lv_obj_set_pos(s_box_lbl, 400, 196);
 
-    lv_obj_t *tip = mk_label(s_id_scr, "对准茶叶，点「识别」开始识别", C_DIM);
-    lv_obj_set_style_text_font(tip, &lv_font_cn_16, LV_PART_MAIN);
-    lv_obj_set_pos(tip, 400, 250);
+    /* 模式选择：点哪个跑哪个（TEA=茶叶分类 / PACKAGE=包装检测） */
+    s_btn_mode_tea = mk_btn_solid(s_id_scr, "茶叶分类", on_mode_tea, NULL, 150, 46, C_ACCENT);
+    lv_obj_set_pos(s_btn_mode_tea, 400, 250);
+
+    s_btn_mode_pkg = mk_btn_solid(s_id_scr, "包装检测", on_mode_pkg, NULL, 150, 46, C_PANEL2);
+    lv_obj_set_pos(s_btn_mode_pkg, 566, 250);
+
+    s_tip_lbl = mk_label(s_id_scr, "对准茶叶，点「识别」开始识别", C_DIM);
+    lv_obj_set_style_text_font(s_tip_lbl, &lv_font_cn_16, LV_PART_MAIN);
+    lv_obj_set_pos(s_tip_lbl, 400, 310);
+
+    ui_update_mode_buttons();
 }
 
 /* 触发一次识别（AI 任务内部做 5 帧投票，结果写 g_t3_result）*/
@@ -408,6 +424,53 @@ static void on_identify(lv_event_t *e)
 }
 
 /* ============================================================
+ * 识别模式切换（茶叶分类 / 包装检测）
+ * ------------------------------------------------------------
+ * 点哪个按钮就 ai_model_set_mode(对应模式)，下一次「识别」跑对应权重：
+ *   茶叶分类 → cls  4 类 @0x70A00000（320×320）
+ *   包装检测 → detect 5 类 @0x70D00000（256×256）
+ * ============================================================ */
+static void ui_update_mode_buttons(void)
+{
+    int pkg = (ai_model_get_mode() == AI_MODE_PACKAGE);
+
+    if (s_btn_mode_tea != NULL) {
+        lv_obj_set_style_bg_color(s_btn_mode_tea,
+                                  lv_color_hex(pkg ? C_PANEL2 : C_ACCENT), LV_PART_MAIN);
+    }
+    if (s_btn_mode_pkg != NULL) {
+        lv_obj_set_style_bg_color(s_btn_mode_pkg,
+                                  lv_color_hex(pkg ? C_ACCENT : C_PANEL2), LV_PART_MAIN);
+    }
+    if (s_tip_lbl != NULL) {
+        lv_label_set_text(s_tip_lbl, pkg ? "对准茶叶包装，点「识别」开始检测"
+                                         : "对准茶叶，点「识别」开始识别");
+    }
+}
+
+static void on_mode_tea(lv_event_t *e)
+{
+    (void)e;
+    ai_model_set_mode(AI_MODE_TEA);
+    ui_update_mode_buttons();
+    lv_label_set_text(s_cls_lbl, "类别：-");
+    lv_label_set_text(s_conf_lbl, "置信度：-");
+    lv_label_set_text(s_box_lbl, "检测框：-");
+    g_t3_result_ready = 0U;
+}
+
+static void on_mode_pkg(lv_event_t *e)
+{
+    (void)e;
+    ai_model_set_mode(AI_MODE_PACKAGE);
+    ui_update_mode_buttons();
+    lv_label_set_text(s_cls_lbl, "类别：-");
+    lv_label_set_text(s_conf_lbl, "置信度：-");
+    lv_label_set_text(s_box_lbl, "检测框：-");
+    g_t3_result_ready = 0U;
+}
+
+/* ============================================================
  * 茶名显示层
  * ------------------------------------------------------------
  * 三分类改造后 ai_task.c 的 g_class_names[] 已直接输出中文
@@ -416,16 +479,30 @@ static void on_identify(lv_event_t *e)
 static const char *tea_name_cn_from_str(const char *name)
 {
     static const char *eng_names[] = {
+        /* TEA 模式（cls 4 类） */
         "black",
         "green",
         "puer",
         "unknown",
+        /* PACKAGE 模式（detect 5 类，ai_task.c 的 g_pkg_class_names） */
+        "black_tea",
+        "green_tea",
+        "chrysanthemum_tea",
+        "yinghong_black_tea",
+        "green_tangerine_puer_tea",
     };
     static const char *cn_names[] = {
+        /* TEA 模式 */
         "红茶",
         "绿茶",
         "青柑普洱",
         "未识别",
+        /* PACKAGE 模式 */
+        "红茶包装",
+        "绿茶包装",
+        "菊花茶包装",
+        "英红红茶包装",
+        "小青柑普洱茶包装",
     };
 
     if (name == NULL) return "未识别";
@@ -446,8 +523,8 @@ static void tick_cb(lv_timer_t *tmr)
 {
     (void)tmr;
 
-    /* 识别画面：刷新相机预览 */
-    if (s_on_id_scr && (s_cam_canvas != NULL)) {
+    /* 识别画面：刷新相机预览（推理期间跳过缩放，减少 XSPI2 取指争用） */
+    if (s_on_id_scr && (s_cam_canvas != NULL) && (g_ai_infer_busy == 0U)) {
         cam_resize_128();
         lv_obj_invalidate(s_cam_canvas);
     }

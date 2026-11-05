@@ -163,15 +163,34 @@ void aton_osal_freertos_pb_unlock()
 
 /**
  * @brief Wait for event
+ * @note  [双模型适配 2026-11] 默认改为 __WFI()：
+ *        CPU 睡眠期间不从 XSPI2 取指，把 XSPI2 总线让给 NPU 读权重
+ *        （detect 权重 2.9MB @0x70D00000，与 CPU XIP 争用会导致整机卡死）。
+ *        NPU 完成中断会唤醒 CPU；SysTick 也会周期唤醒，不会永久睡死。
+ *        需要回退 FreeRTOS 信号量等待时，编译时定义 AI_NPU_WFE_USE_WFI=0。
  */
+/*
+ * [双模型适配 2026-11] 曾尝试改为 __WFI()（让 CPU 不从 XSPI2 取指），
+ * 实测导致 NPU 推理 0ms/logits 不变 + LTDC 花屏（sleep 模式下 NPU/显示时钟被门控），
+ * 因此默认关闭，保持原 FreeRTOS 信号量等待。
+ * 如需再试验，编译时定义 AI_NPU_WFE_USE_WFI=1。
+ */
+#ifndef AI_NPU_WFE_USE_WFI
+#define AI_NPU_WFE_USE_WFI 0
+#endif
+
 void aton_osal_freertos_wfe()
 {
+#if (AI_NPU_WFE_USE_WFI == 1)
+  __WFI();
+#else
   BaseType_t ret;
 
   ret = xSemaphoreTake(_wfe_sem, portMAX_DELAY);
   assert(ret == pdTRUE);
 
   LL_ATON_LIB_UNUSED(ret);
+#endif
 }
 
 /**

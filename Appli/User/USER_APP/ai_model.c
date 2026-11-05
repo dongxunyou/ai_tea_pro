@@ -62,6 +62,46 @@
 #include <string.h>
 
 LL_ATON_DECLARE_NAMED_NN_INSTANCE_AND_INTERFACE(Default);
+LL_ATON_DECLARE_NAMED_NN_INSTANCE_AND_INTERFACE(detect);
+
+/* ============================================================
+ * 双模型模式状态（2026-11）
+ * ------------------------------------------------------------
+ * TEA     -> NN_Instance_Default（cls 4 类，320×320，权重 @0x70A00000）
+ * PACKAGE -> NN_Instance_detect （detect 5 类，256×256，权重 @0x70D00000）
+ * 两网络分时执行（LL_ATON_RT_Main 每次自带 RuntimeInit/DeInit），
+ * 激活区/输入输出 buffer 地址重叠但不会并发，安全复用。
+ * ============================================================ */
+static ai_mode_t s_ai_mode = AI_MODE_TEA;
+static NN_Instance_TypeDef *s_cur_inst = &NN_Instance_Default;
+
+#define PKG_INPUT_W     256U
+#define PKG_INPUT_H     256U
+#define PKG_INPUT_SIZE  (PKG_INPUT_W * PKG_INPUT_H * 3U)
+
+void ai_model_set_mode(ai_mode_t mode)
+{
+    s_ai_mode = (mode == AI_MODE_PACKAGE) ? AI_MODE_PACKAGE : AI_MODE_TEA;
+    s_cur_inst = (s_ai_mode == AI_MODE_PACKAGE) ? &NN_Instance_detect : &NN_Instance_Default;
+    printf("[NPU] mode -> %s (inst=%p)\r\n",
+           (s_ai_mode == AI_MODE_PACKAGE) ? "PACKAGE(detect)" : "TEA(cls)",
+           (const void *)s_cur_inst);
+}
+
+ai_mode_t ai_model_get_mode(void)
+{
+    return s_ai_mode;
+}
+
+uint32_t ai_model_input_width(void)
+{
+    return (s_ai_mode == AI_MODE_PACKAGE) ? PKG_INPUT_W : (uint32_t)AI_INPUT_WIDTH;
+}
+
+uint32_t ai_model_input_height(void)
+{
+    return (s_ai_mode == AI_MODE_PACKAGE) ? PKG_INPUT_H : (uint32_t)AI_INPUT_HEIGHT;
+}
 
 #ifndef NPU_IRQ_PRIORITY
 #define NPU_IRQ_PRIORITY  15U
@@ -681,7 +721,7 @@ static int npu_exec_once(void)
     uint32_t t_npu_start = HAL_GetTick();
 #endif
 
-    LL_ATON_RT_Main(&NN_Instance_Default);
+    LL_ATON_RT_Main(s_cur_inst);
 
 #if AI_PROFILE_INFER
     uint32_t t_npu_end = HAL_GetTick();
@@ -753,6 +793,36 @@ int ai_model_run(const uint8_t *input, const float **output)
     if (input == NULL || output == NULL)
         return -1;
 
+    /* ========== PACKAGE：茶叶包装检测（detect 5 类） ==========
+     * UINT8 输入直填（256×256×3），输出 float32 [9][1344] 直出 */
+    if (s_ai_mode == AI_MODE_PACKAGE) {
+        const LL_Buffer_InfoTypeDef *in_info  = LL_ATON_Input_Buffers_Info_detect();
+        const LL_Buffer_InfoTypeDef *out_info = LL_ATON_Output_Buffers_Info_detect();
+
+        if (in_info == NULL || in_info[0].name == NULL)
+            return -2;
+
+        uint8_t *in_buf = (uint8_t *)LL_Buffer_addr_start(&in_info[0]);
+        if (in_buf == NULL)
+            return -3;
+
+        memcpy(in_buf, input, PKG_INPUT_SIZE);
+        __DSB();   /* FIX-4: 确保 CPU 写入在 NPU 读取前可见 */
+
+        (void)npu_exec_once();
+
+        if (out_info == NULL || out_info[0].name == NULL)
+            return -4;
+
+        *output = (const float *)LL_Buffer_addr_start(&out_info[0]);
+        if (*output == NULL)
+            return -5;
+
+        return 0;
+    }
+
+    /* ========== TEA：茶叶四分类（cls 4 类） ==========
+     * 输入 uint8 像素 -> INT8 量化（LUT），输出 INT8 -> float 反量化 */
     io_conv_prepare();
 
     const LL_Buffer_InfoTypeDef *in_info  = LL_ATON_Input_Buffers_Info_Default();

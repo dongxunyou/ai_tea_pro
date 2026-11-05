@@ -29,6 +29,10 @@ extern T3Result_t g_t3_result;
 /* ai_task → LVGL 任务的异步通知标志：ai_task 写完 g_t3_result 后置 1 */
 extern volatile uint8_t g_t3_result_ready;
 
+/* 推理进行中标志（ai_task 置位；UI 定时器据此暂停相机预览缩放，
+ * 减少 CPU 从 XSPI2 取指，把总线让给 NPU 读权重） */
+extern volatile uint8_t g_ai_infer_busy;
+
 /**
  * @brief FreeRTOS 任务入口
  *        建议栈 ≥ 4096 字节
