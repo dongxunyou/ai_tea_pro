@@ -62,8 +62,8 @@ const lv_font_t * const g_keep_fonts[] __attribute__((used, section(".keep_fonts
 #define SCR_H      480
 
 /* 相机预览缩放目标尺寸（与 ai_task 的预处理无关，仅用于界面显示）*/
-#define PREV_W     128
-#define PREV_H     128
+#define PREV_W     200
+#define PREV_H     200
 
 /* ============================================================
  * 屏幕 / 对象句柄
@@ -369,57 +369,60 @@ static void build_id_scr(void)
 
     /* 返回 */
     lv_obj_t *back = mk_btn_solid(s_id_scr, LV_SYMBOL_LEFT " 返回",
-                                  on_back_to_main, NULL, 140, 46, C_PANEL2);
+                                  on_back_to_main, NULL, 140, 46, C_ACCENT);
     lv_obj_set_pos(back, 16, 14);
 
-    /* 左列：相机预览 + 识别按钮 */
+    /* 左列：相机预览（放大到 400×400） */
     s_cam_canvas = lv_canvas_create(s_id_scr);
     lv_canvas_set_buffer(s_cam_canvas, s_cam_prev, PREV_W, PREV_H,
                          LV_COLOR_FORMAT_RGB888);
-    lv_obj_set_size(s_cam_canvas, 320, 320);
-    lv_obj_set_pos(s_cam_canvas, 40, 80);
+    lv_obj_set_size(s_cam_canvas, 400, 400);
+    lv_obj_set_pos(s_cam_canvas, 10, 65);
     lv_obj_set_style_border_color(s_cam_canvas, lv_color_hex(C_LINE), LV_PART_MAIN);
     lv_obj_set_style_border_width(s_cam_canvas, 1, LV_PART_MAIN);
     lv_obj_set_style_radius(s_cam_canvas, 10, LV_PART_MAIN);
 
-    lv_obj_t *idbtn = mk_btn_solid(s_id_scr, LV_SYMBOL_EYE_OPEN "识别",
-                                   on_identify, NULL, 320, 56, C_ACCENT);
-    lv_obj_set_pos(idbtn, 40, 412);
-
-    /* 右列：识别结果 */
+    /* 右列：识别结果 + 识别按钮（x=420，宽 370） */
     s_cls_lbl = mk_label(s_id_scr, "类别：-", C_TXT);
     lv_obj_set_style_text_font(s_cls_lbl, &lv_font_cn_36, LV_PART_MAIN);
-    lv_obj_set_pos(s_cls_lbl, 400, 90);
+    lv_obj_set_pos(s_cls_lbl, 420, 70);
+    lv_obj_set_width(s_cls_lbl, 360);
+    lv_label_set_long_mode(s_cls_lbl, LV_LABEL_LONG_WRAP);
 
     s_conf_lbl = mk_label(s_id_scr, "置信度：-", C_DIM);
-    lv_obj_set_style_text_font(s_conf_lbl, &lv_font_cn_24, LV_PART_MAIN);
-    lv_obj_set_pos(s_conf_lbl, 400, 150);
+    lv_obj_set_style_text_font(s_conf_lbl, &lv_font_cn_28, LV_PART_MAIN);
+    lv_obj_set_pos(s_conf_lbl, 420, 160);
 
     s_box_lbl = mk_label(s_id_scr, "检测框：-", C_DIM);
-    lv_obj_set_style_text_font(s_box_lbl, &lv_font_cn_24, LV_PART_MAIN);
-    lv_obj_set_pos(s_box_lbl, 400, 196);
+    lv_obj_set_style_text_font(s_box_lbl, &lv_font_cn_28, LV_PART_MAIN);
+    lv_obj_set_pos(s_box_lbl, 420, 205);
 
     /* 模式选择：点哪个跑哪个（TEA=茶叶分类 / PACKAGE=包装检测） */
-    s_btn_mode_tea = mk_btn_solid(s_id_scr, "茶叶分类", on_mode_tea, NULL, 150, 46, C_ACCENT);
-    lv_obj_set_pos(s_btn_mode_tea, 400, 250);
+    s_btn_mode_tea = mk_btn_solid(s_id_scr, "茶叶分类", on_mode_tea, NULL, 160, 50, C_ACCENT);
+    lv_obj_set_pos(s_btn_mode_tea, 420, 250);
 
-    s_btn_mode_pkg = mk_btn_solid(s_id_scr, "包装检测", on_mode_pkg, NULL, 150, 46, C_PANEL2);
-    lv_obj_set_pos(s_btn_mode_pkg, 566, 250);
+    s_btn_mode_pkg = mk_btn_solid(s_id_scr, "包装检测", on_mode_pkg, NULL, 160, 50, C_PANEL2);
+    lv_obj_set_pos(s_btn_mode_pkg, 590, 250);
 
-    s_tip_lbl = mk_label(s_id_scr, "对准茶叶，点「识别」开始识别", C_DIM);
-    lv_obj_set_style_text_font(s_tip_lbl, &lv_font_cn_16, LV_PART_MAIN);
-    lv_obj_set_pos(s_tip_lbl, 400, 310);
+    s_tip_lbl = mk_label(s_id_scr, "对准茶叶，点识别", C_DIM);
+    lv_obj_set_style_text_font(s_tip_lbl, &lv_font_cn_24, LV_PART_MAIN);
+    lv_obj_set_pos(s_tip_lbl, 420, 310);
 
     /* 识别进度条（右列，识别期间显示 0-100%） */
     s_prog_bar = lv_bar_create(s_id_scr);
-    lv_obj_set_size(s_prog_bar, 320, 14);
-    lv_obj_set_pos(s_prog_bar, 400, 350);
+    lv_obj_set_size(s_prog_bar, 350, 16);
+    lv_obj_set_pos(s_prog_bar, 420, 350);
     lv_bar_set_range(s_prog_bar, 0, 100);
     lv_bar_set_value(s_prog_bar, 0, LV_ANIM_OFF);
     lv_obj_set_style_bg_color(s_prog_bar, lv_color_hex(C_PANEL2), LV_PART_MAIN);
     lv_obj_set_style_bg_color(s_prog_bar, lv_color_hex(C_ACCENT), LV_PART_INDICATOR);
     lv_obj_set_style_radius(s_prog_bar, 7, LV_PART_MAIN);
     lv_obj_add_flag(s_prog_bar, LV_OBJ_FLAG_HIDDEN);
+
+    /* 识别按钮（右列底部） */
+    lv_obj_t *idbtn = mk_btn_solid(s_id_scr, LV_SYMBOL_EYE_OPEN "识别",
+                                   on_identify, NULL, 350, 56, C_ACCENT);
+    lv_obj_set_pos(idbtn, 420, 385);
 
     ui_update_mode_buttons();
 }
@@ -459,8 +462,8 @@ static void ui_update_mode_buttons(void)
                                   lv_color_hex(pkg ? C_ACCENT : C_PANEL2), LV_PART_MAIN);
     }
     if (s_tip_lbl != NULL) {
-        lv_label_set_text(s_tip_lbl, pkg ? "对准茶叶包装，点「识别」开始检测"
-                                         : "对准茶叶，点「识别」开始识别");
+        lv_label_set_text(s_tip_lbl, pkg ? "对准茶叶包装，点识别"
+                                         : "对准茶叶，点识别");
     }
 }
 
